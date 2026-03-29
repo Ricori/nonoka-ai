@@ -4,7 +4,9 @@ import yorubot from '@/core/yoruBot';
 import {
   calculateTypingDelay, cleanAt, getReplyMsgId, hasReply, sleep,
 } from '@/utils/function';
-import { generateAssistantMessageParam, generateUserMessageParam, getAiReply } from '@/service/ai';
+import {
+  generateAssistantMessageParam, generateInitiativePromptParam, generateUserMessageParam, getAiReply,
+} from '@/service/ai';
 import yoruStorage from '@/core/yoruStorage';
 import { printLog } from '@/utils/print';
 import { processStickerTag } from './stickerMap';
@@ -28,7 +30,7 @@ async function processReplyQueue(groupId: number, autonomousReply = false) {
     let aiReplyText: string | null = null;
     if (autonomousReply) {
       // 主动发起会话的提示词
-      const autoPrompt = generateUserMessageParam('（System：群友并没有@你，请根据上面的对话自然地随机插一句嘴，刷一下存在感）');
+      const autoPrompt = generateInitiativePromptParam();
       aiReplyText = await getAiReply([...history, autoPrompt]);
     } else {
       aiReplyText = await getAiReply(history);
@@ -127,8 +129,8 @@ export default class GroupAIReplyModule extends YoruModuleBase<GroupMessageData>
 
     // 主动插话的白名单测试群
     if (yorubot.config.aiReply.initiativeList.includes(groupId)) {
-      // 被@的后5分钟内插话概率增大
-      const isRecentlyAt = Date.now() - (lastAtTime.get(groupId) || 0) < 300 * 1000;
+      // 被@的后200s内插话概率增大
+      const isRecentlyAt = Date.now() - (lastAtTime.get(groupId) || 0) < 200 * 1000;
       const triggerChance = isRecentlyAt ? 0.21 : 0.02;
       if (Math.random() < triggerChance) {
         shouldReply = true;

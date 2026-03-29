@@ -14,6 +14,7 @@ const client = new OpenAI({
 
 export function generateUserMessageParam(rawText: string, shouldCleanImg = false): ChatCompletionMessageParam {
   const text = rawText.replace(/\[CQ:face,.*\]/g, '[表情]')
+    .replace(/\[CQ:video,.*\]/g, '[视频]')
     .replace(/\[CQ:json,data=\{[\s\S]*?"title":"([^"]+)"[\s\S]*?\}\]/, '分享了文章《$1》')
     .replace(/\[CQ:forward,.*\]/g, '[聊天记录]');
   if (hasImage(text)) {
@@ -61,6 +62,19 @@ export function generateAssistantMessageParam(text: string): ChatCompletionMessa
   return {
     role: 'assistant',
     content: text,
+  };
+}
+
+export function generateInitiativePromptParam(): ChatCompletionMessageParam {
+  return {
+    role: 'assistant',
+    content: [
+      {
+        type: 'text',
+        text: '（System：群友并没有@你，请根据上面的对话自然地随机插一句嘴，刷一下存在感）',
+        cache_control: { type: 'ephemeral' },
+      } as any,
+    ],
   };
 }
 
