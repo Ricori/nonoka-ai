@@ -87,6 +87,7 @@ export default class GroupAIReplyModule extends YoruModuleBase<GroupMessageData>
     const {
       message, user_id: userId, self_id: selfId, group_id: groupId, sender,
     } = this.data;
+
     const nickName = sender.nickname || userId;
 
     let shouldReply = false;
@@ -125,7 +126,7 @@ export default class GroupAIReplyModule extends YoruModuleBase<GroupMessageData>
     }
 
     // 主动插话的白名单测试群
-    if (groupId === 914620769 || groupId === 473794729) {
+    if (yorubot.config.aiReply.initiativeList.includes(groupId)) {
       // 被@的后5分钟内插话概率增大
       const isRecentlyAt = Date.now() - (lastAtTime.get(groupId) || 0) < 300 * 1000;
       const triggerChance = isRecentlyAt ? 0.21 : 0.02;

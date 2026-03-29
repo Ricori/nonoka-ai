@@ -48,6 +48,8 @@ export interface BotConfig {
     apiKey: string;
     /** 黑名单，黑名单内的群不会触发任何回复 */
     blackList: number[];
+    /** 主动发起对话的群名单 */
+    initiativeList: number[];
   },
   /** 瑟图功能 */
   hPic: {

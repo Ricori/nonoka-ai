@@ -8,11 +8,12 @@ import RequestFriendModule from '@/modules/request/requestFriend';
 import AdminModule from '@/modules/private/admin';
 import ImageSearchModule from '@/modules/common/imageSearch';
 import HPicModule from '@/modules/common/hPic';
-import ykhrOnedriveModule from '@/modules/group/ykhr';
+import YkhrOnedriveModule from '@/modules/group/ykhr';
 import PrivateAIReplyModule from '@/modules/private/privateReply';
 import GroupAIReplyModule from '@/modules/group/groupReply';
 import RepeaterModule from '@/modules/group/repeater';
 import LocalPictureModule from '@/modules/group/localPic';
+import GroupCommandModule from '@/modules/group/command';
 
 // 加载好友请求模块
 yorubot.loadModule('request', [RequestFriendModule]);
@@ -27,6 +28,7 @@ yorubot.loadModule('private', [
 
 // 加载群@消息模块
 yorubot.loadModule('groupAt', [
+  GroupCommandModule,
   ImageSearchModule,
   LocalPictureModule,
   HPicModule,
@@ -35,8 +37,9 @@ yorubot.loadModule('groupAt', [
 
 // 加载群消息默认监听
 yorubot.loadModule('group', [
-  ykhrOnedriveModule,
+  GroupCommandModule,
   LocalPictureModule,
+  YkhrOnedriveModule,
   HPicModule,
   RepeaterModule,
   GroupAIReplyModule,

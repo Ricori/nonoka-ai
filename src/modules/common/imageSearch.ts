@@ -1,10 +1,17 @@
 import { GroupMessageData, PrivateMessageData } from '@/types/event';
 import yorubot from '@/core/yoruBot';
 import {
-  hasImage, hasReply, getReplyMsgId, getImgs, hasSerachImageText,
+  hasImage, hasReply, getReplyMsgId, getImgs,
 } from '@/utils/function';
 import searchImage from '@/service/searchImg';
 import YoruModuleBase from '../base';
+
+function hasSerachImageText(msg: string) {
+  if (msg.includes('搜图') || msg.includes('来源')) {
+    return true;
+  }
+  return false;
+}
 
 export default class ImageSearchModule extends YoruModuleBase<PrivateMessageData | GroupMessageData> {
   static NAME = 'ImageSearchModule';

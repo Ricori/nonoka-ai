@@ -8,7 +8,7 @@ import { getJobProgress, initGithubConfig, startTransfer } from './transfer';
 
 initGithubConfig();
 
-export default class ykhrOnedriveModule extends YoruModuleBase<GroupMessageData> {
+export default class YkhrOnedriveModule extends YoruModuleBase<GroupMessageData> {
   static NAME = 'YkhrOnedriveModule';
 
   async checkConditions() {

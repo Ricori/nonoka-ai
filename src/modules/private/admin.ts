@@ -10,7 +10,7 @@ export default class AdminModule extends YoruModuleBase<PrivateMessageData> {
 
   private taskControlMatch: RegExpMatchArray | null = null;
 
-  private pushTwiiterMatch: RegExpMatchArray | null = null;
+  private pushTweetMatch: RegExpMatchArray | null = null;
 
   async checkConditions() {
     const adminList = yorubot.config.admin || [];
@@ -33,9 +33,9 @@ export default class AdminModule extends YoruModuleBase<PrivateMessageData> {
       return true;
     }
 
-    // 3. push twitter - /push-twitter <groupId> <tweetUrl or tweetId>
-    this.pushTwiiterMatch = message.match(/\/push-twitter\s+(\d+).*(?:status\/|\s+)(\d+)/);
-    if (this.pushTwiiterMatch) {
+    // 3. push twitter - /push-tweet <groupId> <tweetUrl or tweetId>
+    this.pushTweetMatch = message.match(/\/push-tweet\s+(\d+).*(?:status\/|\s+)(\d+)/);
+    if (this.pushTweetMatch) {
       return true;
     }
 
@@ -84,8 +84,8 @@ export default class AdminModule extends YoruModuleBase<PrivateMessageData> {
     }
 
     // 3. push twitter
-    if (this.pushTwiiterMatch) {
-      const [, targetGroupId, tweetId] = this.pushTwiiterMatch;
+    if (this.pushTweetMatch) {
+      const [, targetGroupId, tweetId] = this.pushTweetMatch;
       const msgArr = await createMsgFromTweetId(tweetId);
       if (!msgArr || msgArr.length === 0) return;
       for (const msg of msgArr) {

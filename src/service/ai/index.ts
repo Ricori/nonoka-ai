@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 import { ChatCompletionMessageParam } from 'openai/resources';
 import yorubot from '@/core/yoruBot';
-import { printError } from '@/utils/print';
+import { printError, printLog } from '@/utils/print';
 import { getImgs, hasImage } from '@/utils/function';
 import Axios from 'axios';
 import { SYSTEM_PROMPT, TRANSLATE_PROMPT } from './prompt';
@@ -77,6 +77,9 @@ export async function getAiReply(messageParam: ChatCompletionMessageParam[]) {
   };
 
   const messagesToAPI: ChatCompletionMessageParam[] = [systemMsg, ...messageParam];
+
+  printLog('[TEST] messagesToAPI');
+  console.log(messagesToAPI);
 
   let response = await client.chat.completions.create(
     {

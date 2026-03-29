@@ -64,7 +64,7 @@ export default class LocalPictureModule extends YoruModuleBase<GroupMessageData>
       yorubot.sendGroupMsg(groupId, '关键词至少需要两个字', userId);
       return;
     }
-    if (keyword.includes('奶龙')) {
+    if (keyword.includes('龙')) {
       yorubot.sendGroupMsg(groupId, '该关键词不允许使用', userId);
       return;
     }

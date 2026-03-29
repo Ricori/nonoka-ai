@@ -89,7 +89,7 @@ class YoruStorage {
     }
     const history = this.privateChatConversations.get(userId)!;
     history.push(messageParam);
-    if (history.length > MAX_CHAT_HISTORY_COUNT) {
+    if (history.length > MAX_CHAT_HISTORY_COUNT + 10) {
       history.splice(0, history.length - MAX_CHAT_HISTORY_COUNT);
       while (history.length > 0 && history[0].role === 'assistant') {
         history.shift();
@@ -130,8 +130,8 @@ class YoruStorage {
       // 判断消息 content 是不是多模态数组
       if (Array.isArray(msg.content)) {
         imageCount++;
-        // 如果超过 3 张图
-        if (imageCount > 2) {
+        // 如果超过 1 张图
+        if (imageCount > 1) {
           const downgradedText = (msg.content[0] as { text: string }).text;
           // 多模态消息改为纯文本消息
           history[i] = {
