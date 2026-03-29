@@ -10,6 +10,7 @@ import {
 import yoruStorage from '@/core/yoruStorage';
 import { printLog } from '@/utils/print';
 import { processStickerTag } from './stickerMap';
+import { getTopicRelevance } from './relevance';
 
 const sessionTimers = new Map<number, NodeJS.Timeout | null>();
 const processingLocks = new Set<number>(); // 正在回复的群的锁
@@ -131,8 +132,11 @@ export default class GroupAIReplyModule extends YoruModuleBase<GroupMessageData>
     if (yorubot.config.aiReply.initiativeList.includes(groupId)) {
       // 被@的后200s内插话概率增大
       const isRecentlyAt = Date.now() - (lastAtTime.get(groupId) || 0) < 200 * 1000;
-      const triggerChance = isRecentlyAt ? 0.21 : 0.02;
-      if (Math.random() < triggerChance) {
+      // 基础概率
+      const baseTriggerChance = isRecentlyAt ? 0.20 : 0.02;
+      // 消息关联度加成
+      const additional = getTopicRelevance(processedMessage);
+      if (Math.random() < baseTriggerChance + additional) {
         shouldReply = true;
         autonomousReply = true;
       }
