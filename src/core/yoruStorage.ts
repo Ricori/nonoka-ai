@@ -82,12 +82,16 @@ class YoruStorage {
     return this.lastestSNSUpdateTime.get(`twitter-${username}`) ?? 0;
   }
 
-  /** 添加某qq私聊会话记录 */
-  addPrivateChatMessage(userId: number, messageParam: ChatCompletionMessageParam) {
-    if (!this.privateChatConversations.has(userId)) {
-      this.privateChatConversations.set(userId, []);
+  /** 向指定会话记录中追加消息并裁剪 */
+  private appendChatMessage(
+    store: Map<number, ChatCompletionMessageParam[]>,
+    key: number,
+    messageParam: ChatCompletionMessageParam,
+  ) {
+    if (!store.has(key)) {
+      store.set(key, []);
     }
-    const history = this.privateChatConversations.get(userId)!;
+    const history = store.get(key)!;
 
     // 每5条消息添加 cache_control
     let msg: ChatCompletionMessageParam = messageParam;
@@ -97,14 +101,19 @@ class YoruStorage {
         : messageParam.content;
       msg = { ...messageParam, content } as any;
     }
-    history.push(msg);
 
+    history.push(msg);
     if (history.length > MAX_CHAT_HISTORY_COUNT + 10) {
       history.splice(0, history.length - MAX_CHAT_HISTORY_COUNT);
       while (history.length > 0 && history[0].role === 'assistant') {
         history.shift();
       }
     }
+  }
+
+  /** 添加某qq私聊会话记录 */
+  addPrivateChatMessage(userId: number, messageParam: ChatCompletionMessageParam) {
+    this.appendChatMessage(this.privateChatConversations, userId, messageParam);
   }
 
   /** 获取某qq私聊会话记录 */
@@ -112,22 +121,14 @@ class YoruStorage {
     return this.privateChatConversations.get(userId) || [];
   }
 
-
   /** 添加某群会话记录 */
   addGroupChatConversations(groupId: number, messageParam: ChatCompletionMessageParam) {
-    if (!this.groupChatConversations.has(groupId)) {
-      this.groupChatConversations.set(groupId, []);
-    }
-    const history = this.groupChatConversations.get(groupId)!;
-    history.push(messageParam);
-    if (history.length > MAX_CHAT_HISTORY_COUNT + 10) {
-      // 触发阶梯式裁剪 (缓冲区 10 条)
-      history.splice(0, history.length - MAX_CHAT_HISTORY_COUNT);
-      // 确保首条消息是 user
-      while (history.length > 0 && history[0].role === 'assistant') {
-        history.shift();
-      }
-    }
+    this.appendChatMessage(this.groupChatConversations, groupId, messageParam);
+  }
+
+  /** 获取某群会话记录 */
+  getGroupChatConversations(groupId: number) {
+    return this.groupChatConversations.get(groupId) || [];
   }
 
   /** 修剪某群会话记录 */
@@ -151,11 +152,6 @@ class YoruStorage {
         }
       }
     }
-  }
-
-  /** 获取某群会话记录 */
-  getGroupChatConversations(groupId: number) {
-    return this.groupChatConversations.get(groupId) || [];
   }
 
   /** 清理所有会话缓存 */
