@@ -88,7 +88,17 @@ class YoruStorage {
       this.privateChatConversations.set(userId, []);
     }
     const history = this.privateChatConversations.get(userId)!;
-    history.push(messageParam);
+
+    // 每5条消息添加 cache_control
+    let msg: ChatCompletionMessageParam = messageParam;
+    if (history.length > 0 && history.length % 5 === 0) {
+      const content = typeof messageParam.content === 'string'
+        ? [{ type: 'text', text: messageParam.content, cache_control: { type: 'ephemeral' } } as any]
+        : messageParam.content;
+      msg = { ...messageParam, content } as any;
+    }
+    history.push(msg);
+
     if (history.length > MAX_CHAT_HISTORY_COUNT + 10) {
       history.splice(0, history.length - MAX_CHAT_HISTORY_COUNT);
       while (history.length > 0 && history[0].role === 'assistant') {

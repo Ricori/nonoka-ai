@@ -69,12 +69,7 @@ export function generateAssistantMessageParam(text: string): ChatCompletionMessa
 export function generateInitiativePromptParam(): ChatCompletionMessageParam {
   return {
     role: 'assistant',
-    content: [
-      {
-        type: 'text',
-        text: '（System：群友并没有@你，请根据上面的对话自然地随机插一句嘴，刷一下存在感）',
-      },
-    ],
+    content: '（System：群友并没有@你，请根据上面的对话自然地随机插一句嘴，刷一下存在感）',
   };
 }
 
