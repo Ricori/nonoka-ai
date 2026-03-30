@@ -72,8 +72,7 @@ export function generateInitiativePromptParam(): ChatCompletionMessageParam {
       {
         type: 'text',
         text: '（System：群友并没有@你，请根据上面的对话自然地随机插一句嘴，刷一下存在感）',
-        cache_control: { type: 'ephemeral' },
-      } as any,
+      },
     ],
   };
 }
@@ -127,6 +126,8 @@ export async function getAiReply(messageParam: ChatCompletionMessageParam[]) {
   }
 
   if (response?.choices?.[0]?.message?.content) {
+    printLog(`请求创建缓存 Token${response.usage?.prompt_tokens_details?.cache_creation_input_token}`);
+    printLog(`请求命中缓存 Token${response.usage?.prompt_tokens_details?.cached_tokens}`);
     return response.choices[0].message.content as string;
   }
 

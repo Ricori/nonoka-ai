@@ -5,11 +5,11 @@ export function getTopicRelevance(text: string): number {
   let score = 0;
 
   // 被提到
-  if (text.includes('夜夜')) score += 0.6;
+  if (text.includes('夜夜')) score += 0.55;
 
   // 核心人设词
   const coreInterests = /钱|穷|打工|偶像/;
-  if (coreInterests.test(text)) score += 0.4;
+  if (coreInterests.test(text)) score += 0.35;
 
   // 负面情绪词
   const emotionKeywords = /累|烦|死|倒霉|扣钱|加班|熬夜|骂|烂完了/;
