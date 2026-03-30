@@ -136,7 +136,6 @@ export default class GroupAIReplyModule extends YoruModuleBase<GroupMessageData>
       const baseTriggerChance = isRecentlyAt ? 0.20 : 0.02;
       // 消息关联度加成
       const additional = getTopicRelevance(processedMessage);
-      printLog(`当前概率${baseTriggerChance} ${additional}`);
       if (Math.random() < baseTriggerChance + additional) {
         shouldReply = true;
         autonomousReply = true;
