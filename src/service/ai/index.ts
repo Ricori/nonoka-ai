@@ -127,8 +127,8 @@ export async function getAiReply(messageParam: ChatCompletionMessageParam[]) {
   }
 
   if (response?.choices?.[0]?.message?.content) {
-    printLog(`请求创建缓存 Token${response.usage?.prompt_tokens_details?.cache_creation_input_token}`);
-    printLog(`请求命中缓存 Token${response.usage?.prompt_tokens_details?.cached_tokens}`);
+    printLog('请求缓存 Token');
+    console.log(response.usage?.prompt_tokens_details);
     return response.choices[0].message.content as string;
   }
 
