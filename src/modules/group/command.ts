@@ -14,11 +14,11 @@ export default class GroupCommandModule extends YoruModuleBase<GroupMessageData>
     const { message } = this.data;
 
     // Initiative conversation control - /initiative on|off
-    this.initiativeMatch = message.match(/\/initiative(?:\s+(on|off))?/);
+    this.initiativeMatch = message.match(/^\/initiative(?:\s+(on|off))?$/);
     if (this.initiativeMatch) return true;
 
     // Push twitter - /push-tweet <tweetUrl or tweetId>
-    this.pushTweetMatch = message.match(/\/push-tweet\s+(?:\S*status\/)?(\d+)/);
+    this.pushTweetMatch = message.match(/^\/push-tweet\s+(?:\S*status\/)?(\d+)$/);
     if (this.pushTweetMatch) return true;
 
     return false;
