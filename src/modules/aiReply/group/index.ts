@@ -1,16 +1,15 @@
-import { GroupMessageData } from '@/types/event';
+import { GroupMessageData, SimpleMessageData } from '@/types/event';
 import YoruModuleBase from '@/modules/base';
 import yorubot from '@/core/yoruBot';
 import {
-  calculateTypingDelay, cleanAt, getReplyMsgId, hasReply, sleep,
+  calculateTypingDelay, getReplyMsgId, hasReply, sleep,
 } from '@/utils/function';
-import {
-  generateAssistantMessageParam, generateInitiativePromptParam, generateUserMessageParam, getAiReply,
-} from '@/service/ai';
-import yoruStorage from '@/core/yoruStorage';
+import { getAiReply } from '@/service/ai';
+import messageStorage from '@/modules/aiReply/storage/message';
 import { printLog } from '@/utils/print';
-import { processStickerTag } from './stickerMap';
+import { processStickerTag } from '../stickerMap';
 import { getTopicRelevance } from './relevance';
+import { formatAssistantMessage, formatInitiativePromptMessage, formatMessage } from '../format';
 
 const sessionTimers = new Map<number, NodeJS.Timeout | null>();
 const processingLocks = new Set<number>(); // 正在回复的群的锁
@@ -18,20 +17,19 @@ const lastAtTime = new Map<number, number>(); // 记录每个群最后被@的时
 
 async function processReplyQueue(groupId: number, autonomousReply = false) {
   if (processingLocks.has(groupId)) {
-    // setTimeout(() => processReplyQueue(groupId), 2000);
     return;
   }
-  processingLocks.add(groupId); // 上锁
+  processingLocks.add(groupId);
 
   try {
-    yoruStorage.trimGroupChatConversations(groupId);
-    const history = yoruStorage.getGroupChatConversations(groupId);
+    messageStorage.trimGroupChatConversations(groupId);
+    const history = messageStorage.getGroupChatConversations(groupId);
 
     // 调用 LLM 回复
     let aiReplyText: string | null = null;
     if (autonomousReply) {
       // 主动发起会话的提示词
-      const autoPrompt = generateInitiativePromptParam();
+      const autoPrompt = formatInitiativePromptMessage();
       aiReplyText = await getAiReply([...history, autoPrompt]);
     } else {
       aiReplyText = await getAiReply(history);
@@ -40,8 +38,8 @@ async function processReplyQueue(groupId: number, autonomousReply = false) {
     printLog(`[GroupAIReplyModule] Auto Reply: ${aiReplyText}`);
     if (aiReplyText) {
       // 记忆自己的回复
-      const aiReplyMessageParam = generateAssistantMessageParam(aiReplyText);
-      yoruStorage.addGroupChatConversations(groupId, aiReplyMessageParam);
+      const aiReplyMessageParam = formatAssistantMessage(aiReplyText);
+      messageStorage.addGroupChatConversations(groupId, aiReplyMessageParam);
 
       // 回复消息处理
       const messages = processStickerTag(aiReplyText)
@@ -90,40 +88,33 @@ export default class GroupAIReplyModule extends YoruModuleBase<GroupMessageData>
     const {
       message, user_id: userId, self_id: selfId, group_id: groupId, sender,
     } = this.data;
+    const nickName = sender.nickname || `${userId}`;
 
-    const nickName = sender.nickname || userId;
+    let shouldReply = false; // 需要回复
+    let isInitiativeReply = false; // 是否是主动插话
 
-    let shouldReply = false;
-    let autonomousReply = false;
-    let processedMessage = '';
-    const isAtMe = message.indexOf(`[CQ:at,qq=${selfId}]`) > -1;
 
-    // 获取引用消息文本
+    let replyMessage: SimpleMessageData | undefined;
+    // 获取引用消息
     if (hasReply(message)) {
-      const replyMsgId = getReplyMsgId(message);
-      const replyMsgData = await yorubot.getMessageFromId(replyMsgId);
-      if (replyMsgData) {
-        const isBot = replyMsgData.sender.user_id === selfId; // 是否引用自己的消息
-        const cleanText = cleanAt(replyMsgData.message).replace(/\[CQ:image,[^\]]+\]/g, '[之前的图片]').trim();
-        processedMessage = `[${nickName}]回复了${isBot ? '我' : replyMsgData.sender.nickname || ''}的消息(${cleanText.slice(0, 90)})，说：${cleanAt(message)}`;
-        if (isBot) {
-          shouldReply = true;
-        }
-      }
-    } else {
-      processedMessage = `[${nickName}]${isAtMe ? '提到我' : ''}说：${cleanAt(message).trim()}`;
+      replyMessage = await yorubot.getMessageFromId(getReplyMsgId(message));
     }
+
+    const formattedMessage = formatMessage({
+      selfId,
+      userId,
+      nickName,
+      rawMessage: message,
+      replyMessage,
+      cleanImage: false,
+    });
 
     // 记录群对话记录
-    const messageParam = generateUserMessageParam(processedMessage, false);
-
-    if (messageParam) {
-      yoruStorage.addGroupChatConversations(groupId, messageParam);
-    }
+    messageStorage.addGroupChatConversations(groupId, formattedMessage);
 
 
-    if (isAtMe) {
-      // 在群里被@了
+    if (formattedMessage.isMentionMe) {
+      // 被提到了
       shouldReply = true;
       lastAtTime.set(groupId, Date.now());
     }
@@ -135,10 +126,10 @@ export default class GroupAIReplyModule extends YoruModuleBase<GroupMessageData>
       // 基础概率
       const baseTriggerChance = isRecentlyAt ? 0.20 : 0.02;
       // 消息关联度加成
-      const additional = getTopicRelevance(processedMessage);
+      const additional = getTopicRelevance(formattedMessage.message);
       if (Math.random() < baseTriggerChance + additional) {
         shouldReply = true;
-        autonomousReply = true;
+        isInitiativeReply = true;
       }
     }
 
@@ -153,7 +144,7 @@ export default class GroupAIReplyModule extends YoruModuleBase<GroupMessageData>
 
     const timer = setTimeout(() => {
       sessionTimers.set(groupId, null);
-      processReplyQueue(groupId, autonomousReply);
+      processReplyQueue(groupId, isInitiativeReply);
     }, 4500);
     sessionTimers.set(groupId, timer);
   }

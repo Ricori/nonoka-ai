@@ -1,7 +1,3 @@
-import { ChatCompletionMessageParam } from 'openai/resources';
-
-const MAX_CHAT_HISTORY_COUNT = 15;
-
 interface RepeaterLog {
   msg: string,
   times: number,
@@ -18,11 +14,6 @@ class YoruStorage {
   /** 各平台最新内容时间 (key: "bili-{uid}" | "twitter-{username}") */
   private lastestSNSUpdateTime = new Map<string, number>();
 
-  /** 私聊消息对话记录 (key: qq) */
-  private privateChatConversations = new Map<number, ChatCompletionMessageParam[]>();
-
-  /** 群消息对话记录  (key: groupId) */
-  private groupChatConversations = new Map<number, ChatCompletionMessageParam[]>();
 
   /** 新增好友到待添加名单 */
   joinToBeAddedList = (userId: number) => { this.toBeAddedList.add(userId); };
@@ -80,84 +71,6 @@ class YoruStorage {
   /** 获取某推特用户最新推文时间 */
   getTwitterLastestTweetTime(username: string) {
     return this.lastestSNSUpdateTime.get(`twitter-${username}`) ?? 0;
-  }
-
-  /** 向指定会话记录中追加消息并裁剪 */
-  private appendChatMessage(
-    store: Map<number, ChatCompletionMessageParam[]>,
-    key: number,
-    messageParam: ChatCompletionMessageParam,
-  ) {
-    if (!store.has(key)) {
-      store.set(key, []);
-    }
-    const history = store.get(key)!;
-
-    // 每5条消息添加 cache_control
-    let msg: ChatCompletionMessageParam = messageParam;
-    if (history.length > 0 && history.length % 5 === 0) {
-      const content = typeof messageParam.content === 'string'
-        ? [{ type: 'text', text: messageParam.content, cache_control: { type: 'ephemeral' } } as any]
-        : messageParam.content;
-      msg = { ...messageParam, content } as any;
-    }
-
-    history.push(msg);
-    if (history.length > MAX_CHAT_HISTORY_COUNT + 10) {
-      history.splice(0, history.length - MAX_CHAT_HISTORY_COUNT);
-      while (history.length > 0 && history[0].role === 'assistant') {
-        history.shift();
-      }
-    }
-  }
-
-  /** 添加某qq私聊会话记录 */
-  addPrivateChatMessage(userId: number, messageParam: ChatCompletionMessageParam) {
-    this.appendChatMessage(this.privateChatConversations, userId, messageParam);
-  }
-
-  /** 获取某qq私聊会话记录 */
-  getPrivateChatMessage(userId: number): ChatCompletionMessageParam[] {
-    return this.privateChatConversations.get(userId) || [];
-  }
-
-  /** 添加某群会话记录 */
-  addGroupChatConversations(groupId: number, messageParam: ChatCompletionMessageParam) {
-    this.appendChatMessage(this.groupChatConversations, groupId, messageParam);
-  }
-
-  /** 获取某群会话记录 */
-  getGroupChatConversations(groupId: number) {
-    return this.groupChatConversations.get(groupId) || [];
-  }
-
-  /** 修剪某群会话记录 */
-  trimGroupChatConversations(groupId: number) {
-    let imageCount = 0;
-    const history = this.groupChatConversations.get(groupId)!;
-    // 倒序遍历消息
-    for (let i = history.length - 1; i >= 0; i--) {
-      const msg = history[i];
-      // 判断消息 content 是不是多模态数组
-      if (Array.isArray(msg.content)) {
-        imageCount++;
-        // 如果超过 1 张图
-        if (imageCount > 1) {
-          const downgradedText = (msg.content[0] as { text: string }).text;
-          // 多模态消息改为纯文本消息
-          history[i] = {
-            ...msg,
-            content: downgradedText,
-          };
-        }
-      }
-    }
-  }
-
-  /** 清理所有会话缓存 */
-  cleanChatConversations() {
-    this.privateChatConversations.clear();
-    this.groupChatConversations.clear();
   }
 }
 

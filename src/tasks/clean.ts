@@ -1,10 +1,10 @@
 import { SimpleIntervalJob, Task } from 'toad-scheduler';
-import yoruStorage from '@/core/yoruStorage';
+import messageStorage from '@/modules/aiReply/storage/message';
 import { printLog } from '@/utils/print';
 
 const task = new Task('systemCleanupTask', () => {
   // 清理会话缓存
-  yoruStorage.cleanChatConversations();
+  messageStorage.cleanChatConversations();
   printLog('[systemCleanupTask] 已自动清理会话缓存。');
 });
 

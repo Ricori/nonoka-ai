@@ -1,9 +1,11 @@
 import { PrivateMessageData } from '@/types/event';
 import YoruModuleBase from '@/modules/base';
 import yorubot from '@/core/yoruBot';
-import { generateAssistantMessageParam, generateUserMessageParam, getAiReply } from '@/service/ai';
-import yoruStorage from '@/core/yoruStorage';
+import { getAiReply } from '@/service/ai';
 import { calculateTypingDelay, sleep } from '@/utils/function';
+import messageStorage from '../storage/message';
+import { processStickerTag } from '../stickerMap';
+import { formatAssistantMessage, formatMessage } from '../format';
 
 export default class PrivateAIReplyModule extends YoruModuleBase<PrivateMessageData> {
   static NAME = 'PrivateAIReplyModule';
@@ -13,19 +15,28 @@ export default class PrivateAIReplyModule extends YoruModuleBase<PrivateMessageD
   }
 
   async run() {
-    const { message, user_id: userId } = this.data;
+    const {
+      message, user_id: userId, self_id: selfId, sender,
+    } = this.data;
+    const nickName = sender.nickname || `${userId}`;
 
-    const messageParam = generateUserMessageParam(message);
+    const formattedMessage = formatMessage({
+      selfId,
+      userId,
+      nickName,
+      rawMessage: message,
+      cleanImage: false,
+    });
 
-    yoruStorage.addPrivateChatMessage(userId, messageParam);
-    const history = yoruStorage.getPrivateChatMessage(userId);
+    messageStorage.addPrivateChatMessage(userId, formattedMessage);
+    const history = messageStorage.getPrivateChatMessage(userId);
     const aiReplyText = await getAiReply(history);
 
     if (aiReplyText) {
-      const aiReplyMessageParam = generateAssistantMessageParam(aiReplyText);
-      yoruStorage.addPrivateChatMessage(userId, aiReplyMessageParam);
+      const aiReplyMessageParam = formatAssistantMessage(aiReplyText);
+      messageStorage.addPrivateChatMessage(userId, aiReplyMessageParam);
 
-      const messages = aiReplyText
+      const messages = processStickerTag(aiReplyText)
         .split('||')
         .map((msg) => msg.trim())
         .filter((msg) => msg.length > 0);

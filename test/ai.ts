@@ -1,4 +1,4 @@
-import { generateUserMessageParam } from '@/service/ai';
+import { generateUserMessageParam, } from '@/service/ai/message';
 import { SYSTEM_PROMPT } from '@/service/ai/prompt';
 import Axios from 'axios';
 

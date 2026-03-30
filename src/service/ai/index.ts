@@ -1,10 +1,10 @@
 import OpenAI from 'openai';
-import { ChatCompletionMessageParam } from 'openai/resources';
+import type { ChatCompletionMessageParam } from 'openai/resources';
 import yorubot from '@/core/yoruBot';
 import { printError, printLog } from '@/utils/print';
-import { getImgs, hasImage } from '@/utils/function';
 import Axios from 'axios';
-import { SYSTEM_PROMPT, TRANSLATE_PROMPT } from './prompt';
+import type { FormattedMessage } from '@/types/message';
+import { SYSTEM_PROMPT, SECURITY_PROMPT, TRANSLATE_PROMPT } from './prompt';
 
 const client = new OpenAI({
   apiKey: yorubot.config.aiReply.apiKey,
@@ -12,80 +12,41 @@ const client = new OpenAI({
 });
 
 
-export function generateUserMessageParam(rawText: string, shouldCleanImg = false): ChatCompletionMessageParam {
-  const text = rawText.replace(/\[CQ:face,.*\]/g, '[表情]')
-    .replace(/\[CQ:video,.*\]/g, '[视频]')
-    .replace(/\[CQ:record,.*\]/g, '[语音]')
-    .replace(/\[CQ:json[\s\S]*?"desc"\s*:\s*"([^"]+)"[\s\S]*?\]/g, '分享了文章《$1》')
-    .replace(/\[CQ:forward,.*\]/g, '[聊天记录]');
-  if (hasImage(text)) {
-    if (shouldCleanImg) {
-      // 需要清理图片
-      const cleanText = text.replace(/\[CQ:image,[^\]]+\]/g, '[图片]').trim();
-      return {
-        role: 'user',
-        content: cleanText,
-      };
-    }
-    const img = getImgs(text, true)[0];
-    const imgUrl = img.url || '';
-    const imgSize = Number(img.file_size || 0);
-    if (img.summary === '[动画表情]' || imgSize < 120 * 1024) {
-      // 包含表情标签，或者图片小于120kb认为是表情，降成纯文本
-      const cleanText = text.replace(/\[CQ:image,[^\]]+\]/g, '[表情]').trim();
-      return {
-        role: 'user',
-        content: cleanText,
-      };
-    }
-    const plainText = text.replace(/\[CQ:image,.*\]/g, '[图片]');
-    return {
-      role: 'user',
-      content: [
-        { type: 'text', text: plainText || '[图片]' },
-        {
-          type: 'image_url',
-          image_url: {
-            url: imgUrl,
-          },
-        },
-      ],
-    };
-  }
-  return {
-    role: 'user',
-    content: text,
-  };
-}
-
-
-export function generateAssistantMessageParam(text: string): ChatCompletionMessageParam {
-  return {
-    role: 'assistant',
-    content: text,
-  };
-}
-
-export function generateInitiativePromptParam(): ChatCompletionMessageParam {
-  return {
-    role: 'assistant',
-    content: '（System：群友并没有@你，请根据上面的对话自然地随机插一句嘴，刷一下存在感）',
-  };
-}
-
-export async function getAiReply(messageParam: ChatCompletionMessageParam[]) {
+export async function getAiReply(formattedMessage: FormattedMessage[]) {
   const systemMsg: ChatCompletionMessageParam = {
     role: 'system',
     content: [
       {
         type: 'text',
-        text: SYSTEM_PROMPT,
+        text: SYSTEM_PROMPT + SECURITY_PROMPT,
         cache_control: { type: 'ephemeral' },
       } as any,
     ],
   };
 
-  const messagesToAPI: ChatCompletionMessageParam[] = [systemMsg, ...messageParam];
+  const chatCompletionMessages = formattedMessage.map((msg) => {
+    let content: ChatCompletionMessageParam['content'] = msg.message;
+    if (msg.imgUrl) {
+      content = [
+        { type: 'text', text: msg.message },
+        {
+          type: 'image_url',
+          image_url: {
+            url: msg.imgUrl,
+          },
+        },
+      ];
+    } else if (msg.cacheControl) {
+      content = {
+        type: 'text',
+        text: msg.message,
+        cache_control: { type: 'ephemeral' },
+      } as any;
+    }
+    return { role: msg.role, content } as ChatCompletionMessageParam;
+  });
+
+  const messagesToAPI: ChatCompletionMessageParam[] = [systemMsg, ...chatCompletionMessages];
 
   printLog('[TEST] messagesToAPI');
   console.log(messagesToAPI);

@@ -1,7 +1,7 @@
 import { PrivateMessageData } from '@/types/event';
 import yorubot from '@/core/yoruBot';
 import { createMsgFromTweetId } from '@/tasks/twitter';
-import yoruStorage from '@/core/yoruStorage';
+import messageStorage from '@/modules/aiReply/storage/message';
 import yoruSchedule from '@/core/yoruSchedule';
 import YoruModuleBase from '../base';
 
@@ -50,7 +50,7 @@ export default class AdminModule extends YoruModuleBase<PrivateMessageData> {
 
     // 1. clean memory
     if (message === '/clean-memory') {
-      yoruStorage.cleanChatConversations();
+      messageStorage.cleanChatConversations();
       yorubot.sendPrivateMsg(userId, '[YoruSystem] Memory cleaned.');
       return;
     }
