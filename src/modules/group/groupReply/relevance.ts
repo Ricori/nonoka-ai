@@ -15,9 +15,6 @@ export function getTopicRelevance(text: string): number {
   const emotionKeywords = /累|烦|死|倒霉|扣钱|加班|熬夜|骂|烂完了/;
   if (emotionKeywords.test(text)) score += 0.2;
 
-  // 动态长度加成
-  if (text.length > 30) score += 0.1;
-
   // 问句加成（疑问句更容易触发好奇心）
   if (text.includes('吗') || text.includes('？')) score += 0.05;
 
