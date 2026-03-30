@@ -15,7 +15,8 @@ const client = new OpenAI({
 export function generateUserMessageParam(rawText: string, shouldCleanImg = false): ChatCompletionMessageParam {
   const text = rawText.replace(/\[CQ:face,.*\]/g, '[表情]')
     .replace(/\[CQ:video,.*\]/g, '[视频]')
-    .replace(/\[CQ:json,data=\{[\s\S]*?"title":"([^"]+)"[\s\S]*?\}\]/, '分享了文章《$1》')
+    .replace(/\[CQ:record,.*\]/g, '[语音]')
+    .replace(/\[CQ:json[\s\S]*?"desc"\s*:\s*"([^"]+)"[\s\S]*?\]/g, '分享了文章《$1》')
     .replace(/\[CQ:forward,.*\]/g, '[聊天记录]');
   if (hasImage(text)) {
     if (shouldCleanImg) {
