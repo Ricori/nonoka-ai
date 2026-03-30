@@ -12,7 +12,7 @@ const client = new OpenAI({
 });
 
 
-export async function getAiReply(formattedMessage: FormattedMessage[]) {
+export async function getLLMReply(formattedMessage: FormattedMessage[]) {
   const systemMsg: ChatCompletionMessageParam = {
     role: 'system',
     content: [

@@ -1,7 +1,7 @@
 import Axios from 'axios';
 import { printError } from '@/utils/print';
 import yorubot from '@/core/yoruBot';
-import { translateText } from '@/service/ai';
+import { translateText } from '@/service/llm';
 
 export interface TweetPost {
   username: string;

@@ -1,5 +1,5 @@
 import { generateUserMessageParam, } from '@/service/ai/message';
-import { SYSTEM_PROMPT } from '@/service/ai/prompt';
+import { SYSTEM_PROMPT } from '@/service/llm/prompt';
 import Axios from 'axios';
 
 export async function testAI() {

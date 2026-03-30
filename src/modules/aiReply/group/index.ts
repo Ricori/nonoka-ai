@@ -4,7 +4,7 @@ import yorubot from '@/core/yoruBot';
 import {
   calculateTypingDelay, getReplyMsgId, hasReply, sleep,
 } from '@/utils/function';
-import { getAiReply } from '@/service/ai';
+import { getLLMReply } from '@/service/llm';
 import messageStorage from '@/modules/aiReply/storage/message';
 import { printLog } from '@/utils/print';
 import { processStickerTag } from '../stickerMap';
@@ -30,9 +30,9 @@ async function processReplyQueue(groupId: number, autonomousReply = false) {
     if (autonomousReply) {
       // 主动发起会话的提示词
       const autoPrompt = formatInitiativePromptMessage();
-      aiReplyText = await getAiReply([...history, autoPrompt]);
+      aiReplyText = await getLLMReply([...history, autoPrompt]);
     } else {
-      aiReplyText = await getAiReply(history);
+      aiReplyText = await getLLMReply(history);
     }
 
     printLog(`[GroupAIReplyModule] Auto Reply: ${aiReplyText}`);

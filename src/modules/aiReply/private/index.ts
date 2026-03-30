@@ -1,7 +1,7 @@
 import { PrivateMessageData } from '@/types/event';
 import YoruModuleBase from '@/modules/base';
 import yorubot from '@/core/yoruBot';
-import { getAiReply } from '@/service/ai';
+import { getLLMReply } from '@/service/llm';
 import { calculateTypingDelay, sleep } from '@/utils/function';
 import messageStorage from '../storage/message';
 import { processStickerTag } from '../stickerMap';
@@ -30,7 +30,7 @@ export default class PrivateAIReplyModule extends YoruModuleBase<PrivateMessageD
 
     messageStorage.addPrivateChatMessage(userId, formattedMessage);
     const history = messageStorage.getPrivateChatMessage(userId);
-    const aiReplyText = await getAiReply(history);
+    const aiReplyText = await getLLMReply(history);
 
     if (aiReplyText) {
       const aiReplyMessageParam = formatAssistantMessage(aiReplyText);
