@@ -28,14 +28,9 @@ class MessageStorage {
     if (newMessages.length === 0) return;
 
     try {
-      const file = path.join(CHAT_BACKUP_DIR, `${groupId}_${date}.json`);
-      let existing: FormattedMessage[] = [];
-      try {
-        existing = JSON.parse(await fs.promises.readFile(file, 'utf-8'));
-      } catch {
-        // 文件不存在时忽略
-      }
-      await fs.promises.writeFile(file, JSON.stringify([...existing, ...newMessages], null, 2), 'utf-8');
+      const file = path.join(CHAT_BACKUP_DIR, `${groupId}_${date}.txt`);
+      const lines = `${newMessages.map((m) => `[${m.userId}]${m.message}`).join('\n')}\n`;
+      await fs.promises.appendFile(file, lines, 'utf-8');
       this.groupBackupState.set(groupId, { date, lastMsg: history[history.length - 1] });
     } catch (e) {
       printError('[MessageStorage] 备份群聊记录失败', e);
