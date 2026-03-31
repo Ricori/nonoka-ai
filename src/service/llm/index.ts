@@ -5,9 +5,7 @@ import { printError, printLog } from '@/utils/print';
 import Axios from 'axios';
 import type { FormattedMessage } from '@/types/message';
 import {
-  SYSTEM_PROMPT, SECURITY_PROMPT, TRANSLATE_PROMPT,
-  getUserMemoryPrompt,
-  getSummarizePrompt,
+  SYSTEM_PROMPT, SECURITY_PROMPT, TRANSLATE_PROMPT, getSummarizePrompt,
 } from './prompt';
 
 const client = new OpenAI({
@@ -16,15 +14,13 @@ const client = new OpenAI({
 });
 
 
-export async function getLLMReply(formattedMessage: FormattedMessage[], userMemoryContext?: string) {
-  const systemText = SYSTEM_PROMPT + getUserMemoryPrompt(userMemoryContext) + SECURITY_PROMPT;
-
+export async function getLLMReply(formattedMessage: FormattedMessage[]) {
   const systemMsg: ChatCompletionMessageParam = {
     role: 'system',
     content: [
       {
         type: 'text',
-        text: systemText,
+        text: SYSTEM_PROMPT + SECURITY_PROMPT,
         cache_control: { type: 'ephemeral' },
       } as any,
     ],

@@ -9,7 +9,9 @@ import { printLog } from '@/utils/print';
 import messageStorage from '../storage/message';
 import { processStickerTag } from '../stickerMap';
 import { getTopicRelevance } from './relevance';
-import { formatAssistantMessage, formatInitiativePromptMessage, formatMessage } from '../format';
+import {
+  formatAssistantMessage, formatInitiativePromptMessage, formatMessage, formatUserMemoryPromptMessage,
+} from '../format';
 import userMemoryStorage from '../storage/userMemory';
 
 const sessionTimers = new Map<number, NodeJS.Timeout | null>();
@@ -33,13 +35,14 @@ async function processReplyQueue(groupId: number, isInitiativeReply = false) {
     )];
 
     const userMemoryContext = userMemoryStorage.getMemoryContext(recentUserIds);
+    const userMemoryPrompt = formatUserMemoryPromptMessage(userMemoryContext);
 
     if (isInitiativeReply) {
       // 主动发起会话的提示词
       const initiativePrompt = formatInitiativePromptMessage();
-      aiReplyText = await getLLMReply([...history, initiativePrompt], userMemoryContext);
+      aiReplyText = await getLLMReply([...history, userMemoryPrompt, initiativePrompt]);
     } else {
-      aiReplyText = await getLLMReply(history, userMemoryContext);
+      aiReplyText = await getLLMReply([...history, userMemoryPrompt]);
     }
 
     printLog(`[GroupAIReplyModule] Auto Reply: ${aiReplyText}`);
