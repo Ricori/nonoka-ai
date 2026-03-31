@@ -3,6 +3,7 @@ build
 
 # Data
 data/picture
+data/memory/user
 
 # Config
 config.json

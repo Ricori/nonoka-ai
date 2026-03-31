@@ -4,7 +4,11 @@ import yorubot from '@/core/yoruBot';
 import { printError, printLog } from '@/utils/print';
 import Axios from 'axios';
 import type { FormattedMessage } from '@/types/message';
-import { SYSTEM_PROMPT, SECURITY_PROMPT, TRANSLATE_PROMPT } from './prompt';
+import {
+  SYSTEM_PROMPT, SECURITY_PROMPT, TRANSLATE_PROMPT,
+  getUserMemoryPrompt,
+  getSummarizePrompt,
+} from './prompt';
 
 const client = new OpenAI({
   apiKey: yorubot.config.aiReply.apiKey,
@@ -12,13 +16,15 @@ const client = new OpenAI({
 });
 
 
-export async function getLLMReply(formattedMessage: FormattedMessage[]) {
+export async function getLLMReply(formattedMessage: FormattedMessage[], userMemoryContext?: string) {
+  const systemText = SYSTEM_PROMPT + getUserMemoryPrompt(userMemoryContext) + SECURITY_PROMPT;
+
   const systemMsg: ChatCompletionMessageParam = {
     role: 'system',
     content: [
       {
         type: 'text',
-        text: SYSTEM_PROMPT + SECURITY_PROMPT,
+        text: systemText,
         cache_control: { type: 'ephemeral' },
       } as any,
     ],
@@ -95,6 +101,35 @@ export async function getLLMReply(formattedMessage: FormattedMessage[]) {
   return null;
 }
 
+
+/** 用 LLM 将用户近期消息归纳为不超过 6 条核心特征短句 */
+export async function summarizeUserTraits(
+  nickName: string,
+  messages: string[],
+  existingTraits: string[],
+): Promise<string[]> {
+  const prompt = getSummarizePrompt(nickName, messages, existingTraits);
+
+  const response = await client.chat.completions.create({
+    model: 'qwen-turbo-1101',
+    messages: [{ role: 'user', content: prompt }],
+    temperature: 0.3,
+    max_tokens: 120,
+  }, { timeout: 15000 }).catch(() => null);
+
+  const content = response?.choices?.[0]?.message?.content ?? '';
+  try {
+    const match = content.match(/\[[\s\S]*\]/);
+    if (match) {
+      const parsed = JSON.parse(match[0]);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return (parsed as unknown[]).filter((t) => typeof t === 'string') as string[];
+      }
+    }
+  } catch { /* ignore */ }
+
+  return existingTraits;
+}
 
 export async function translateText(text: string) {
   const ret = await Axios.post(`${yorubot.config.aiReply.baseUrl}/chat/completions`, {

@@ -5,17 +5,18 @@ import {
   calculateTypingDelay, getReplyMsgId, hasReply, sleep,
 } from '@/utils/function';
 import { getLLMReply } from '@/service/llm';
-import messageStorage from '@/modules/aiReply/storage/message';
 import { printLog } from '@/utils/print';
+import messageStorage from '../storage/message';
 import { processStickerTag } from '../stickerMap';
 import { getTopicRelevance } from './relevance';
 import { formatAssistantMessage, formatInitiativePromptMessage, formatMessage } from '../format';
+import userMemoryStorage from '../storage/userMemory';
 
 const sessionTimers = new Map<number, NodeJS.Timeout | null>();
 const processingLocks = new Set<number>(); // 正在回复的群的锁
 const lastAtTime = new Map<number, number>(); // 记录每个群最后被@的时间
 
-async function processReplyQueue(groupId: number, autonomousReply = false) {
+async function processReplyQueue(groupId: number, isInitiativeReply = false) {
   if (processingLocks.has(groupId)) {
     return;
   }
@@ -26,10 +27,13 @@ async function processReplyQueue(groupId: number, autonomousReply = false) {
 
     // 调用 LLM 回复
     let aiReplyText: string | null = null;
-    if (autonomousReply) {
+
+    // const userMemoryContext = userMemoryStorage.getMemoryContext();
+
+    if (isInitiativeReply) {
       // 主动发起会话的提示词
-      const autoPrompt = formatInitiativePromptMessage();
-      aiReplyText = await getLLMReply([...history, autoPrompt]);
+      const initiativePrompt = formatInitiativePromptMessage();
+      aiReplyText = await getLLMReply([...history, initiativePrompt]);
     } else {
       aiReplyText = await getLLMReply(history);
     }
@@ -111,14 +115,13 @@ export default class GroupAIReplyModule extends YoruModuleBase<GroupMessageData>
     // 记录群对话记录
     messageStorage.addGroupChatConversations(groupId, formattedMessage);
 
-
     if (formattedMessage.isMentionMe) {
       // 被提到了
       shouldReply = true;
       lastAtTime.set(groupId, Date.now());
     }
 
-    // 主动插话的白名单测试群
+    // 主动插话的白名单群
     if (yorubot.config.aiReply.initiativeList.includes(groupId)) {
       // 被@的后200s内插话概率增大
       const isRecentlyAt = Date.now() - (lastAtTime.get(groupId) || 0) < 200 * 1000;
@@ -130,6 +133,9 @@ export default class GroupAIReplyModule extends YoruModuleBase<GroupMessageData>
         shouldReply = true;
         isInitiativeReply = true;
       }
+
+      // 群友记忆系统
+      userMemoryStorage.onMessage(userId, nickName, formattedMessage.message, formattedMessage.isMentionMe);
     }
 
 

@@ -1,4 +1,4 @@
-import { FormattedMessage } from '../../../types/message';
+import type { FormattedMessage } from '@/types/message';
 
 const MAX_CHAT_HISTORY_COUNT = 15;
 
