@@ -1,6 +1,6 @@
 import type { FormattedMessage } from '@/types/message';
 
-const MAX_CHAT_HISTORY_COUNT = 15;
+const MAX_CHAT_HISTORY_COUNT = 10;
 
 class MessageStorage {
   /** 私聊消息对话记录 (key: qq) */
@@ -20,8 +20,8 @@ class MessageStorage {
     }
     const history = store.get(key)!;
 
-    // 第13条消息标记 Cache
-    if (history.length > 0 && history.length === 12) {
+    // 第10条消息标记 Cache
+    if (history.length === 9) {
       history.push({ ...msg, cacheControl: true });
     } else {
       history.push(msg);
