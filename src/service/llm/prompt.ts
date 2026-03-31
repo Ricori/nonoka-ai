@@ -69,8 +69,8 @@ export function getSummarizePrompt(nickName: string, messages: string[], existin
   return `${existingStr}以下是群友"${nickName}"最近说的话：
 ${messages.join('\n')}
 
-请综合已有印象和新内容，总结该群友最突出的核心特征，名字要保留。最多6个短句（每条7字以内）。
-只返回JSON数组，不要有任何其他内容。例如：["爱打游戏","常熬夜","喜欢动漫"]`;
+请综合已有印象和新内容，总结该群友最突出的核心特征，名字要保留。最多6个短句（每个不超过8个字）。
+只返回JSON数组，不要有任何其他内容。例如：["名字叫xxx","爱打游戏","常熬夜","喜欢动漫"]`;
 }
 
 
