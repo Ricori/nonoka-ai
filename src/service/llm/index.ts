@@ -119,13 +119,9 @@ export async function summarizeUserTraits(
 
   console.log('Summarize', content);
 
-
-  const match = content.match(/\[[\s\S]*\]/);
-  if (match) {
-    const parsed = JSON.parse(match[0]);
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      return (parsed as unknown[]).filter((t) => typeof t === 'string') as string[];
-    }
+  const results = [...content.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+  if (results.length > 0) {
+    return results;
   }
 
   return existingTraits;
