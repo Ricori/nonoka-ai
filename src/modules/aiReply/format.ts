@@ -102,7 +102,8 @@ export function formatInitiativePromptMessage(): FormattedMessage {
 }
 
 
-export function formatUserMemoryPromptMessage(userMemoryContext: string): FormattedMessage {
+export function formatUserMemoryPromptMessage(userMemoryContext: string): FormattedMessage | null {
+  if (userMemoryContext === '') return null;
   return {
     role: 'assistant',
     userId: 0,

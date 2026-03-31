@@ -40,9 +40,9 @@ async function processReplyQueue(groupId: number, isInitiativeReply = false) {
     if (isInitiativeReply) {
       // 主动发起会话的提示词
       const initiativePrompt = formatInitiativePromptMessage();
-      aiReplyText = await getLLMReply([...history, userMemoryPrompt, initiativePrompt]);
+      aiReplyText = await getLLMReply([...history, ...(userMemoryPrompt ? [userMemoryPrompt] : []), initiativePrompt]);
     } else {
-      aiReplyText = await getLLMReply([...history, userMemoryPrompt]);
+      aiReplyText = await getLLMReply([...history, ...(userMemoryPrompt ? [userMemoryPrompt] : [])]);
     }
 
     printLog(`[GroupAIReplyModule] Auto Reply: ${aiReplyText}`);
