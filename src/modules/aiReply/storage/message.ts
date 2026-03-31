@@ -20,17 +20,33 @@ class MessageStorage {
     }
     const history = store.get(key)!;
 
-    // 每5条消息标记 useCache
-    if (history.length > 0 && history.length % 5 === 0) {
+    // 第13条消息标记 Cache
+    if (history.length > 0 && history.length === 12) {
       history.push({ ...msg, cacheControl: true });
     } else {
       history.push(msg);
     }
 
     if (history.length > MAX_CHAT_HISTORY_COUNT + 10) {
+      // 触发消息裁剪
       history.splice(0, history.length - MAX_CHAT_HISTORY_COUNT);
       while (history.length > 0 && history[0].role === 'assistant') {
         history.shift();
+      }
+      if (history.length > 0) {
+        // 倒序遍历消息，修剪早期图片
+        let imageCount = 0;
+        for (let i = history.length - 1; i >= 0; i--) {
+          const m = history[i];
+          if (m.imgUrl) {
+            imageCount++;
+            if (imageCount > 1) {
+              history[i] = { ...m, imgUrl: undefined };
+            }
+          }
+        }
+        // 清理后最后一条消息标记 Cache
+        history[history.length - 1].cacheControl = true;
       }
     }
   }
@@ -55,23 +71,6 @@ class MessageStorage {
     return this.groupChatConversations.get(groupId) || [];
   }
 
-  /** 修剪某群会话记录：只保留最近1张图片 */
-  trimGroupChatConversations(groupId: number) {
-    let imageCount = 0;
-    const history = this.groupChatConversations.get(groupId);
-    if (!history) return;
-    // 倒序遍历消息
-    for (let i = history.length - 1; i >= 0; i--) {
-      const msg = history[i];
-      if (msg.imgUrl) {
-        imageCount++;
-        if (imageCount > 1) {
-          // 去掉多余的图片
-          history[i] = { ...msg, imgUrl: undefined };
-        }
-      }
-    }
-  }
 
   /** 清理所有会话缓存 */
   cleanChatConversations() {

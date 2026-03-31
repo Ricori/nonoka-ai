@@ -24,24 +24,31 @@ export async function getLLMReply(formattedMessage: FormattedMessage[]) {
     ],
   };
 
-  const chatCompletionMessages = formattedMessage.map((msg) => {
+  const lastImgIndex = formattedMessage.map((msg) => !!msg.imgUrl).lastIndexOf(true);
+  const chatCompletionMessages = formattedMessage.map((msg, index) => {
     let content: ChatCompletionMessageParam['content'] = msg.message;
     if (msg.imgUrl) {
+      const isLastImgObj = index === lastImgIndex;
       content = [
-        { type: 'text', text: msg.message },
+        {
+          type: 'text',
+          text: msg.message,
+          ...(isLastImgObj ? { cache_control: { type: 'ephemeral' } } : {}),
+        },
         {
           type: 'image_url',
           image_url: {
             url: msg.imgUrl,
+            detail: 'low',
           },
         },
       ];
     } else if (msg.cacheControl) {
-      content = {
+      content = [{
         type: 'text',
         text: msg.message,
         cache_control: { type: 'ephemeral' },
-      } as any;
+      } as any];
     }
     return { role: msg.role, content } as ChatCompletionMessageParam;
   });
@@ -49,7 +56,7 @@ export async function getLLMReply(formattedMessage: FormattedMessage[]) {
   const messagesToAPI: ChatCompletionMessageParam[] = [systemMsg, ...chatCompletionMessages];
 
   printLog('[TEST] messagesToAPI');
-  console.log(messagesToAPI);
+  console.log(JSON.stringify(messagesToAPI, null, 2));
 
   let response = await client.chat.completions.create(
     {

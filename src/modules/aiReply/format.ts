@@ -63,10 +63,10 @@ export function formatMessage(
   }
 
   const img = getImgs(rawMessage, true)[0];
-  const isSticker = img.summary === '[动画表情]' || Number(img.file_size || 0) < 120 * 1024;
+  const isSticker = img.summary === '[动画表情]' || Number(img.file_size || 0) < 110 * 1024;
 
   if (isSticker) {
-    // 动画表情或小于120kb的图片视为表情，降成纯文本
+    // 动画表情或小于110kb的图片视为表情，降成纯文本
     const text = clean(rawMessage).replace(/\[CQ:image,[^\]]+\]/g, '[表情]').trim();
     return {
       role: 'user', userId, isMentionMe, message: prefix + text,

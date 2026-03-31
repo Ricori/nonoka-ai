@@ -22,7 +22,6 @@ async function processReplyQueue(groupId: number, autonomousReply = false) {
   processingLocks.add(groupId);
 
   try {
-    messageStorage.trimGroupChatConversations(groupId);
     const history = messageStorage.getGroupChatConversations(groupId);
 
     // 调用 LLM 回复
