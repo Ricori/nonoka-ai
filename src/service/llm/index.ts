@@ -56,8 +56,8 @@ export async function getLLMReply(formattedMessage: FormattedMessage[]) {
   });
 
   const messagesToAPI: ChatCompletionMessageParam[] = [systemMsg, ...chatCompletionMessages];
-  printLog('[TEST] messagesToAPI');
-  console.log(JSON.stringify(messagesToAPI, null, 2));
+  // printLog('[TEST] messagesToAPI');
+  // console.log(JSON.stringify(messagesToAPI, null, 2));
 
   let response = await client.chat.completions.create(
     {
@@ -116,8 +116,6 @@ export async function summarizeUserTraits(
   }, { timeout: 15000 }).catch((e) => { printError(`[AiReply Summarize Error] ${e}`); return null; });
 
   const content = response?.choices?.[0]?.message?.content ?? '';
-
-  console.log('Summarize', content);
 
   const results = [...content.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
   if (results.length > 0) {
