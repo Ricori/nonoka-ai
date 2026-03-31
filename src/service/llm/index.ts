@@ -113,18 +113,20 @@ export async function summarizeUserTraits(
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.3,
     max_tokens: 120,
-  }, { timeout: 15000 }).catch(() => null);
+  }, { timeout: 15000 }).catch((e) => { printError(`[AiReply Summarize Error] ${e}`); return null; });
 
   const content = response?.choices?.[0]?.message?.content ?? '';
-  try {
-    const match = content.match(/\[[\s\S]*\]/);
-    if (match) {
-      const parsed = JSON.parse(match[0]);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return (parsed as unknown[]).filter((t) => typeof t === 'string') as string[];
-      }
+
+  console.log('Summarize', content);
+
+
+  const match = content.match(/\[[\s\S]*\]/);
+  if (match) {
+    const parsed = JSON.parse(match[0]);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      return (parsed as unknown[]).filter((t) => typeof t === 'string') as string[];
     }
-  } catch { /* ignore */ }
+  }
 
   return existingTraits;
 }

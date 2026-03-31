@@ -3,7 +3,7 @@ import path from 'path';
 import { summarizeUserTraits } from '@/service/llm';
 import { printError, printLog } from '@/utils/print';
 
-const SUMMARY_THRESHOLD = 20; // 每攒够 20 句触发一次
+const SUMMARY_THRESHOLD = 6; // 每攒够 20 句触发一次
 const MAX_TRAITS = 6; // 核心特征上限：6个
 const MEMORY_DIR = path.resolve(process.cwd(), 'data/memory/user');
 
