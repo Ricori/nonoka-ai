@@ -8,7 +8,7 @@ import { getLLMReply } from '@/service/llm';
 import { printLog } from '@/utils/print';
 import messageStorage from '../storage/message';
 import { processStickerTag } from '../stickerMap';
-import { getTopicRelevance } from './relevance';
+import { getAdditionalChance } from './relevance';
 import {
   formatAssistantMessage, formatInitiativePromptMessage, formatMessage, formatUserMemoryPromptMessage,
 } from '../format';
@@ -17,6 +17,7 @@ import userMemoryStorage from '../storage/userMemory';
 const sessionTimers = new Map<number, NodeJS.Timeout | null>();
 const processingLocks = new Set<number>(); // 正在回复的群的锁
 const lastAtTime = new Map<number, number>(); // 记录每个群最后被@的时间
+
 
 async function processReplyQueue(groupId: number, isInitiativeReply = false) {
   if (processingLocks.has(groupId)) {
@@ -133,9 +134,9 @@ export default class GroupAIReplyModule extends YoruModuleBase<GroupMessageData>
       // 被@的后200s内插话概率增大
       const isRecentlyAt = Date.now() - (lastAtTime.get(groupId) || 0) < 200 * 1000;
       // 基础概率
-      const baseTriggerChance = isRecentlyAt ? 0.12 : 0.015;
-      // 消息关联度加成
-      const additional = getTopicRelevance(formattedMessage.message);
+      const baseTriggerChance = isRecentlyAt ? 0.15 : 0.01;
+      // 附加概率
+      const additional = getAdditionalChance(groupId, formattedMessage.message);
       if (Math.random() < baseTriggerChance + additional) {
         shouldReply = true;
         isInitiativeReply = true;
