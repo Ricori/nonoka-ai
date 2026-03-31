@@ -28,12 +28,15 @@ async function processReplyQueue(groupId: number, isInitiativeReply = false) {
     // 调用 LLM 回复
     let aiReplyText: string | null = null;
 
-    // const userMemoryContext = userMemoryStorage.getMemoryContext();
+    const recentUserIds = [...new Set(
+      history.slice(-10).filter((m) => m.role === 'user').map((m) => m.userId),
+    )];
+    const userMemoryContext = userMemoryStorage.getMemoryContext(recentUserIds);
 
     if (isInitiativeReply) {
       // 主动发起会话的提示词
       const initiativePrompt = formatInitiativePromptMessage();
-      aiReplyText = await getLLMReply([...history, initiativePrompt]);
+      aiReplyText = await getLLMReply([...history, initiativePrompt], userMemoryContext);
     } else {
       aiReplyText = await getLLMReply(history);
     }

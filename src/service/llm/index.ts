@@ -60,6 +60,8 @@ export async function getLLMReply(formattedMessage: FormattedMessage[], userMemo
   });
 
   const messagesToAPI: ChatCompletionMessageParam[] = [systemMsg, ...chatCompletionMessages];
+  printLog('[TEST] messagesToAPI');
+  console.log(JSON.stringify(messagesToAPI, null, 2));
 
   let response = await client.chat.completions.create(
     {
