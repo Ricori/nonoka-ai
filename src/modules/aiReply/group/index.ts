@@ -31,6 +31,7 @@ async function processReplyQueue(groupId: number, isInitiativeReply = false) {
     const recentUserIds = [...new Set(
       history.slice(-10).filter((m) => m.role === 'user').map((m) => m.userId),
     )];
+
     const userMemoryContext = userMemoryStorage.getMemoryContext(recentUserIds);
 
     if (isInitiativeReply) {
@@ -38,7 +39,7 @@ async function processReplyQueue(groupId: number, isInitiativeReply = false) {
       const initiativePrompt = formatInitiativePromptMessage();
       aiReplyText = await getLLMReply([...history, initiativePrompt], userMemoryContext);
     } else {
-      aiReplyText = await getLLMReply(history);
+      aiReplyText = await getLLMReply(history, userMemoryContext);
     }
 
     printLog(`[GroupAIReplyModule] Auto Reply: ${aiReplyText}`);

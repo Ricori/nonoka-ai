@@ -155,7 +155,7 @@ class UserMemoryStorage {
     for (const userId of userIds) {
       const data = this.loadUser(userId);
       if (data && data.traits.length > 0) {
-        parts.push(`${data.nickName}：${data.traits.join('、')}`);
+        parts.push(`[${data.nickName}] ${data.traits.join('、')}`);
       }
     }
     if (parts.length === 0) return '';
