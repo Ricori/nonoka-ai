@@ -9,14 +9,14 @@ export function getTopicRelevance(text: string): number {
 
   // 核心人设词
   const coreInterests = /钱|穷|打工|偶像/;
-  if (coreInterests.test(text)) score += 0.35;
+  if (coreInterests.test(text)) score += 0.3;
 
   // 负面情绪词
-  const emotionKeywords = /累|烦|死|倒霉|扣钱|加班|熬夜|骂|烂完了/;
-  if (emotionKeywords.test(text)) score += 0.2;
+  const emotionKeywords = /累|烦|死|倒霉|扣钱|加班|骂|烂/;
+  if (emotionKeywords.test(text)) score += 0.18;
 
   // 问句加成（疑问句更容易触发好奇心）
   if (text.includes('吗') || text.includes('？')) score += 0.05;
 
-  return Math.min(score, 0.6); // 最高基础加成到 60%
+  return Math.min(score, 0.55); // 最高基础加成到 55%
 }
