@@ -91,8 +91,8 @@ export async function getLLMReply(formattedMessage: FormattedMessage[]) {
   }
 
   if (response?.choices?.[0]?.message?.content) {
-    printLog('请求缓存 Token');
-    console.log(response.usage?.prompt_tokens_details);
+    // printLog('请求缓存 Token');
+    // console.log(response.usage?.prompt_tokens_details);
     return response.choices[0].message.content as string;
   }
 
