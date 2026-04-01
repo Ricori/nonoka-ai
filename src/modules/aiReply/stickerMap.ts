@@ -29,8 +29,8 @@ const regex = /\[表情:\s*(.*?)\]/g;
  */
 export function processStickerTag(text: string): string {
   return text.replace(regex, (match, keyword) => {
-    // 75%概率直接删除表情
-    if (Math.random() < 0.75) {
+    // 67%概率直接删除表情
+    if (Math.random() < 0.67) {
       return '';
     }
 
