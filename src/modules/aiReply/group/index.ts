@@ -101,8 +101,12 @@ export default class GroupAIReplyModule extends YoruModuleBase<GroupMessageData>
     } = this.data;
     const nickName = sender.nickname || `${userId}`;
 
+    if (groupId !== 829349264) {
+      return;
+    }
+
     let shouldReply = false; // 需要回复
-    let isInitiativeReply = false; // 是否是主动插话
+    const isInitiativeReply = false; // 是否是主动插话
 
 
     let replyMessage: SimpleMessageData | undefined;
@@ -129,6 +133,7 @@ export default class GroupAIReplyModule extends YoruModuleBase<GroupMessageData>
       lastAtTime.set(groupId, Date.now());
     }
 
+    /*
     // 主动插话的白名单群
     if (yorubot.config.aiReply.initiativeList.includes(groupId)) {
       // 被@的后200s内插话概率增大
@@ -145,6 +150,10 @@ export default class GroupAIReplyModule extends YoruModuleBase<GroupMessageData>
       // 群友记忆系统
       userMemoryStorage.onMessage(userId, nickName, formattedMessage.message, formattedMessage.isMentionMe);
     }
+*/
+
+    shouldReply = true;
+
 
 
     // 没有命中触发条件直接返回

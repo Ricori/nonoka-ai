@@ -52,5 +52,5 @@ yoruSchedule.loadJob([
   TwitterPushJob,
 ]);
 
-// 夜夜酱，启 —— 动 ！！
+// ののか，Link Start ~
 yorubot.start();

@@ -114,7 +114,7 @@ export function getBigImgCode(file: string, isBase64 = false) {
     file: isBase64 ? `base64://${file}` : file,
     maxwidth: 800,
     maxheight: 1600,
-    source: '夜夜酱',
+    source: 'ののかちゃん',
   });
 }
 
