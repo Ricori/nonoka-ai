@@ -35,5 +35,7 @@ export function getAdditionalChance(groupId: number, text: string): number {
   // 补正 [-0.2, 0.2]
   score += getFrequencyCorrection(groupId);
 
+  console.log(groupId, ' AdditionalChance ', score);
+
   return Math.min(score, 0.7); // 最高加到 70%, 最低 -20%
 }
