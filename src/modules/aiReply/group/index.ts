@@ -130,10 +130,10 @@ export default class GroupAIReplyModule extends NonokaModuleBase<GroupMessageDat
 
     // 主动插话的白名单群
     if (nnkbot.config.aiReply.initiativeList.includes(groupId)) {
-      // 被@的后200s内插话概率增大
-      const isRecentlyAt = Date.now() - (lastAtTime.get(groupId) || 0) < 200 * 1000;
+      // 被@的后120s内插话概率增大
+      const isRecentlyAt = Date.now() - (lastAtTime.get(groupId) || 0) < 120 * 1000;
       // 基础概率
-      const baseTriggerChance = isRecentlyAt ? 0.15 : 0.01;
+      const baseTriggerChance = isRecentlyAt ? 0.13 : 0.01;
       // 附加概率
       const additional = getAdditionalChance(groupId, formattedMessage.message);
       if (Math.random() < baseTriggerChance + additional) {

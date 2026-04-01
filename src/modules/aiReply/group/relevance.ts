@@ -12,9 +12,9 @@ export function getFrequencyCorrection(groupId: number): number {
   const count = recent.length;
 
   if (count === 0) return 0.2; // 死寂
-  if (count < 5) return 0.1; // 冷清
-  if (count < 10) return 0; // 正常
-  if (count < 15) return -0.1; // 热闹
+  if (count < 4) return 0.1; // 冷清
+  if (count < 8) return 0; // 正常
+  if (count < 13) return -0.1; // 热闹
   return -0.2;
 }
 
@@ -22,7 +22,7 @@ export function getAdditionalChance(groupId: number, text: string): number {
   let score = 0;
 
   // 被提到
-  if (text.includes('乃乃')) score += 0.7;
+  if (text.includes('乃乃') || text.includes('nono')) score += 0.7;
 
   // 核心人设词第一梯队
   const coreInterests = /写作|小说|文学部|投稿|稿子|可爱|数学|算数/;
@@ -34,8 +34,6 @@ export function getAdditionalChance(groupId: number, text: string): number {
 
   // 补正 [-0.2, 0.2]
   score += getFrequencyCorrection(groupId);
-
-  console.log(groupId, ' AdditionalChance ', score);
 
   return Math.min(score, 0.7); // 最高加到 70%, 最低 -20%
 }
