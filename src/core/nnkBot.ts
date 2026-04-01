@@ -6,16 +6,16 @@ import { NonokaCore } from './nnkCore';
 class NonokaBot extends NonokaCore {
   /** 处理好友请求 */
   setFriendAddRequest(flag: string | number, approve: boolean) {
-    this.yoruWS.call('set_friend_add_request', { flag: `${flag}`, approve });
+    this.nonokaWS.call('set_friend_add_request', { flag: `${flag}`, approve });
   }
 
   /** 处理拉群请求 */
   setGroupAddRequest(flag: string | number, approve: boolean) {
-    this.yoruWS.call('set_group_add_request', {
+    this.nonokaWS.call('set_group_add_request', {
       flag: `${flag}`,
       type: 'invite',
       approve,
-      reason: '该群无授权，请联系Yoru管理员',
+      reason: '没授权呢，请联系Nonoka的主人',
     });
   }
 
@@ -29,7 +29,7 @@ class NonokaBot extends NonokaCore {
     if (this.debugMode) {
       printLog(`[Send Private Msg] ${msg}`);
     }
-    this.yoruWS.call('send_private_msg', {
+    this.nonokaWS.call('send_private_msg', {
       user_id: userId,
       message: msg,
       auto_escape: !!plainText,
@@ -48,7 +48,7 @@ class NonokaBot extends NonokaCore {
     if (this.debugMode) {
       printLog(`[Send Group Msg] ${prefix}${msg}`);
     }
-    this.yoruWS.call('send_group_msg', {
+    this.nonokaWS.call('send_group_msg', {
       group_id: groupId,
       message: `${prefix}${msg}`,
       auto_escape: !!plainText,
@@ -81,7 +81,7 @@ class NonokaBot extends NonokaCore {
     if (this.debugMode) {
       printLog(`[Send Group Msg] ${prefix}${msg}`);
     }
-    this.yoruWS.call('send_group_msg', {
+    this.nonokaWS.call('send_group_msg', {
       group_id: groupId,
       message: prefix + msg,
     });
@@ -96,7 +96,7 @@ class NonokaBot extends NonokaCore {
     if (this.debugMode) {
       printLog('[Send Group Forward Msg]\n', msg);
     }
-    this.yoruWS.call('send_group_forward_msg', {
+    this.nonokaWS.call('send_group_forward_msg', {
       group_id: groupId,
       messages: msg,
     });
@@ -107,7 +107,7 @@ class NonokaBot extends NonokaCore {
    */
   async getMessageFromId(messageId: number | string) {
     if (!messageId) return;
-    const res = await this.yoruWS.call('get_msg', {
+    const res = await this.nonokaWS.call('get_msg', {
       message_id: messageId,
     });
     if (res.retcode === 0 && res.data) {
@@ -120,7 +120,7 @@ class NonokaBot extends NonokaCore {
    * @param {number} messageId 消息id
    */
   async deleteMsg(messageId: number) {
-    this.yoruWS.call('delete_msg', {
+    this.nonokaWS.call('delete_msg', {
       message_id: messageId,
     });
   }
@@ -129,7 +129,7 @@ class NonokaBot extends NonokaCore {
    * @param {string} file 图片缓存文件名
    */
   async getImageInfo(file: string) {
-    const res = await this.yoruWS.call('get_image', {
+    const res = await this.nonokaWS.call('get_image', {
       file,
     });
     if (res.retcode === 0 && res.data) {

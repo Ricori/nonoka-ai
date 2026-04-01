@@ -22,7 +22,7 @@ interface EventFunction {
 
 interface ResponseHandlersType { onSuccess: (ctxt: WSActionRes) => void, onFailure: (e: Error) => void }
 
-export class YoruWebsocket {
+export class NonokaWebsocket {
   private baseUrl = '';
 
   private apiWSConnection: Connection | undefined = undefined;

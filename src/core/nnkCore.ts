@@ -3,7 +3,7 @@ import { GroupMessageData, PrivateMessageData, RequestFirendMessageData } from '
 import { BotConfig, NonokaConfig } from '@/types/config';
 import { loadConfigFile } from '@/utils/io';
 import NonokaModuleBase from '@/modules/base';
-import { YoruWebsocket } from './nnkWS';
+import { NonokaWebsocket } from './nnkWS';
 
 const debugMode = process.env.YDEBUG === 'true';
 
@@ -13,8 +13,8 @@ type Module = typeof NonokaModuleBase<RequestFirendMessageData> |
 
 
 export class NonokaCore {
-  /** YoruWebSocket Object */
-  protected yoruWS: YoruWebsocket;
+  /** NonokaWebSocket Object */
+  protected nonokaWS: NonokaWebsocket;
 
   /** Is in debug mode */
   readonly debugMode = debugMode;
@@ -61,8 +61,8 @@ export class NonokaCore {
       },
     };
 
-    // create yoruWS object
-    this.yoruWS = new YoruWebsocket(config.wsConfig, eventFC);
+    // create nonokaWS object
+    this.nonokaWS = new NonokaWebsocket(config.wsConfig, eventFC);
   }
 
   /** Loaded request message type modules */
@@ -112,12 +112,12 @@ export class NonokaCore {
 
   /** Start bot */
   start() {
-    this.yoruWS.connect();
+    this.nonokaWS.connect();
   }
 
   /** Get bot connecting status */
   getIsBotConnecting() {
-    const state = this.yoruWS.getConnectingState();
+    const state = this.nonokaWS.getConnectingState();
     if (state.api && state.event) {
       return true;
     }

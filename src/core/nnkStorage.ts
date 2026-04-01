@@ -4,7 +4,7 @@ interface RepeaterLog {
   done: boolean,
 }
 
-class YoruStorage {
+class NonokaStorage {
   /** 自动同意好友请求的名单  */
   private toBeAddedList = new Set<number>();
 
@@ -74,4 +74,4 @@ class YoruStorage {
   }
 }
 
-export default new YoruStorage();
+export default new NonokaStorage();

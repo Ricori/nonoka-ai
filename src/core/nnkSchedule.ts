@@ -11,10 +11,10 @@ class NnkSchedule {
         this.scheduler.addSimpleIntervalJob(job);
         count += 1;
       } catch (error) {
-        printLog('[YoruSchedule] Scheduled task Add Error.');
+        printLog('[NonokaSchedule] Scheduled task Add Error.');
       }
     });
-    printLog(`[YoruSchedule] Successfully added ${count} scheduled tasks.`);
+    printLog(`[NonokaSchedule] Successfully added ${count} scheduled tasks.`);
   }
 
   getById(id: string) {
