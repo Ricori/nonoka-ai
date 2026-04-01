@@ -1,17 +1,17 @@
 import { PrivateMessageData } from '@/types/event';
-import YoruModuleBase from '@/modules/base';
-import yorubot from '@/core/yoruBot';
+import NonokaModuleBase from '@/modules/base';
+import nnkbot from '@/core/nnkBot';
 import { getLLMReply } from '@/service/llm';
 import { calculateTypingDelay, sleep } from '@/utils/function';
 import messageStorage from '../storage/message';
 import { processStickerTag } from '../stickerMap';
 import { formatAssistantMessage, formatMessage } from '../format';
 
-export default class PrivateAIReplyModule extends YoruModuleBase<PrivateMessageData> {
+export default class PrivateAIReplyModule extends NonokaModuleBase<PrivateMessageData> {
   static NAME = 'PrivateAIReplyModule';
 
   async checkConditions() {
-    return yorubot.config.aiReply.enable;
+    return nnkbot.config.aiReply.enable;
   }
 
   async run() {
@@ -47,7 +47,7 @@ export default class PrivateAIReplyModule extends YoruModuleBase<PrivateMessageD
           const delay = calculateTypingDelay(msg);
           await sleep(delay);
         }
-        yorubot.sendPrivateMsg(userId, msg);
+        nnkbot.sendPrivateMsg(userId, msg);
       }
     }
   }

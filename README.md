@@ -1,4 +1,4 @@
-# yoruchanAI3.0
+# NonokaChan
 
 A QQ robot AI
 

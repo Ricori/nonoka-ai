@@ -1,9 +1,9 @@
 import { GroupMessageData } from '@/types/event';
-import yorubot from '@/core/yoruBot';
+import nnkbot from '@/core/nnkBot';
 import { createMsgFromTweetId } from '@/tasks/twitter';
-import YoruModuleBase from '../base';
+import NonokaModuleBase from '../base';
 
-export default class GroupCommandModule extends YoruModuleBase<GroupMessageData> {
+export default class GroupCommandModule extends NonokaModuleBase<GroupMessageData> {
   static NAME = 'GroupCommandModule';
 
   private initiativeMatch: RegExpMatchArray | null = null;
@@ -30,20 +30,20 @@ export default class GroupCommandModule extends YoruModuleBase<GroupMessageData>
     // Initiative conversation
     if (this.initiativeMatch) {
       const action = this.initiativeMatch[1];
-      const list = yorubot.config.aiReply.initiativeList;
+      const list = nnkbot.config.aiReply.initiativeList;
       if (!action) {
         const isOn = list.includes(groupId);
-        yorubot.sendGroupMsg(groupId, `[YoruSystem] 当前群主动对话状态: ${isOn ? '开启' : '关闭'}`);
+        nnkbot.sendGroupMsg(groupId, `[NonokaSystem] 当前群主动对话状态: ${isOn ? '开启' : '关闭'}`);
       } else if (action === 'on') {
         if (!list.includes(groupId)) {
           list.push(groupId);
-          yorubot.sendGroupMsg(groupId, '[YoruSystem] 已开启主动对话');
+          nnkbot.sendGroupMsg(groupId, '[NonokaSystem] 已开启主动对话');
         }
       } else {
         const idx = list.indexOf(groupId);
         if (idx !== -1) {
           list.splice(idx, 1);
-          yorubot.sendGroupMsg(groupId, '[YoruSystem] 已关闭主动对话');
+          nnkbot.sendGroupMsg(groupId, '[NonokaSystem] 已关闭主动对话');
         }
       }
     }
@@ -54,7 +54,7 @@ export default class GroupCommandModule extends YoruModuleBase<GroupMessageData>
       const msgArr = await createMsgFromTweetId(tweetId);
       if (!msgArr || msgArr.length === 0) return;
       for (const msg of msgArr) {
-        yorubot.sendGroupMsg(Number(groupId), msg);
+        nnkbot.sendGroupMsg(Number(groupId), msg);
       }
     }
   }

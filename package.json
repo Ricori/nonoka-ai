@@ -1,7 +1,7 @@
 {
-  "name": "yoruchan-ai",
-  "version": "3.2.0",
-  "description": "Is my dear Yoruchan online ? (.jpg",
+  "name": "nonoka-ai",
+  "version": "4.0.0",
+  "description": "A cute junior female student",
   "main": "index.ts",
   "scripts": {
     "dev": "tsx ./src/index.ts",
@@ -13,7 +13,7 @@
   },
   "keywords": [
     "QQ Robot",
-    "yoruchan"
+    "Nonoka"
   ],
   "author": "TakamiChika",
   "license": "GPL-3.0",

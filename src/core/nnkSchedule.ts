@@ -1,7 +1,7 @@
 import { ToadScheduler, SimpleIntervalJob } from 'toad-scheduler';
 import { printLog } from '../utils/print';
 
-class YoruSchedule {
+class NnkSchedule {
   private scheduler = new ToadScheduler();
 
   loadJob(list: SimpleIntervalJob[]) {
@@ -38,4 +38,4 @@ class YoruSchedule {
   }
 }
 
-export default new YoruSchedule();
+export default new NnkSchedule();

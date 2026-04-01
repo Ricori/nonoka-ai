@@ -10,8 +10,8 @@ export interface BotConfig {
   admin: number[];
   /** 是否同意自动添加好友 */
   autoAddFriend: boolean;
-  /** yoru API服务 */
-  yoruService: {
+  /** nonoka API服务 */
+  nonokaService: {
     /** API服务地址 */
     baseUrl: string;
     /** API服务密钥 */
@@ -62,7 +62,7 @@ export interface BotConfig {
   },
 }
 
-export interface YoruConfig {
+export interface NonokaConfig {
   wsConfig: WSConfig;
   botConfig: BotConfig;
 }

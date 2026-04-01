@@ -1,6 +1,6 @@
 import Axios from 'axios';
 import { printError } from '@/utils/print';
-import yorubot from '@/core/yoruBot';
+import nnkbot from '@/core/nnkBot';
 import { translateText } from '@/service/llm';
 
 export interface TweetPost {
@@ -28,14 +28,14 @@ function getTimestampFromTweetId(id: string) {
 let consecutiveFailCount = 0;
 
 export async function getLatestTweet(username: string) {
-  const yoruServiceConfig = yorubot.config.yoruService;
-  const yoruURL = `${yoruServiceConfig.baseUrl}/tweets/top/${username}?apikey=${yoruServiceConfig.apiKey}`;
+  const nnkServiceConfig = nnkbot.config.nonokaService;
+  const nnkURL = `${nnkServiceConfig.baseUrl}/tweets/top/${username}?apikey=${nnkServiceConfig.apiKey}`;
 
   for (let i = 0; i < 2; i++) {
     try {
-      const ret = await Axios.get(yoruURL, { timeout: 15000 });
+      const ret = await Axios.get(nnkURL, { timeout: 15000 });
       if (ret?.data?.success === false) {
-        throw new Error('[yoru-service] getLatestTweet API Error.');
+        throw new Error('[NonokaService] getLatestTweet API Error.');
       }
       if (ret?.data && ret.data.list?.length > 0) {
         const urlList = ret.data.list;
@@ -54,7 +54,7 @@ export async function getLatestTweet(username: string) {
         consecutiveFailCount++;
         if (consecutiveFailCount % 5 === 0) {
           printError(`${errorMsg} - All attempts failed x${consecutiveFailCount}.`);
-          yorubot.sendPrivateMsg(yorubot.config.admin[0], `GetLatestTweet All attempts failed x${consecutiveFailCount}. reason: ${e.message}`);
+          nnkbot.sendPrivateMsg(nnkbot.config.admin[0], `GetLatestTweet All attempts failed x${consecutiveFailCount}. reason: ${e.message}`);
         }
         return undefined;
       }

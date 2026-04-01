@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import type { ChatCompletionMessageParam } from 'openai/resources';
-import yorubot from '@/core/yoruBot';
+import nnkbot from '@/core/nnkBot';
 import { printError, printLog } from '@/utils/print';
 import Axios from 'axios';
 import type { FormattedMessage } from '@/types/message';
@@ -9,8 +9,8 @@ import {
 } from './prompt';
 
 const client = new OpenAI({
-  apiKey: yorubot.config.aiReply.apiKey,
-  baseURL: yorubot.config.aiReply.baseUrl,
+  apiKey: nnkbot.config.aiReply.apiKey,
+  baseURL: nnkbot.config.aiReply.baseUrl,
 });
 
 
@@ -126,7 +126,7 @@ export async function summarizeUserTraits(
 }
 
 export async function translateText(text: string) {
-  const ret = await Axios.post(`${yorubot.config.aiReply.baseUrl}/chat/completions`, {
+  const ret = await Axios.post(`${nnkbot.config.aiReply.baseUrl}/chat/completions`, {
     model: 'deepseek-v3.2-exp',
     messages: [
       { role: 'user', content: TRANSLATE_PROMPT + text },
@@ -134,7 +134,7 @@ export async function translateText(text: string) {
   }, {
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${yorubot.config.aiReply.apiKey}`,
+      Authorization: `Bearer ${nnkbot.config.aiReply.apiKey}`,
     },
   }).catch((e) => {
     printError(`[Aliyun Error] Fetch Error: ${e.message}`);

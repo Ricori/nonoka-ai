@@ -1,6 +1,6 @@
 import { GroupMessageData, SimpleMessageData } from '@/types/event';
-import YoruModuleBase from '@/modules/base';
-import yorubot from '@/core/yoruBot';
+import NonokaModuleBase from '@/modules/base';
+import nnkbot from '@/core/nnkBot';
 import {
   calculateTypingDelay, getReplyMsgId, hasReply, sleep,
 } from '@/utils/function';
@@ -65,7 +65,7 @@ async function processReplyQueue(groupId: number, isInitiativeReply = false) {
           const delay = calculateTypingDelay(msg);
           await sleep(delay);
         }
-        yorubot.sendGroupMsg(groupId, msg);
+        nnkbot.sendGroupMsg(groupId, msg);
       }
     }
   } finally {
@@ -78,15 +78,15 @@ async function processReplyQueue(groupId: number, isInitiativeReply = false) {
 
 
 
-export default class GroupAIReplyModule extends YoruModuleBase<GroupMessageData> {
+export default class GroupAIReplyModule extends NonokaModuleBase<GroupMessageData> {
   static NAME = 'GroupAIReplyModule';
 
   async checkConditions() {
-    if (!yorubot.config.aiReply.enable) {
+    if (!nnkbot.config.aiReply.enable) {
       return false;
     }
     const { group_id: groupId } = this.data;
-    const { blackList } = yorubot.config.aiReply;
+    const { blackList } = nnkbot.config.aiReply;
     if (blackList.includes(groupId)) {
       return false;
     }
@@ -101,18 +101,13 @@ export default class GroupAIReplyModule extends YoruModuleBase<GroupMessageData>
     } = this.data;
     const nickName = sender.nickname || `${userId}`;
 
-    if (groupId !== 829349264) {
-      return;
-    }
-
     let shouldReply = false; // 需要回复
-    const isInitiativeReply = false; // 是否是主动插话
-
+    let isInitiativeReply = false; // 是否是主动插话
 
     let replyMessage: SimpleMessageData | undefined;
     // 获取引用消息
     if (hasReply(message)) {
-      replyMessage = await yorubot.getMessageFromId(getReplyMsgId(message));
+      replyMessage = await nnkbot.getMessageFromId(getReplyMsgId(message));
     }
 
     const formattedMessage = formatMessage({
@@ -133,9 +128,8 @@ export default class GroupAIReplyModule extends YoruModuleBase<GroupMessageData>
       lastAtTime.set(groupId, Date.now());
     }
 
-    /*
     // 主动插话的白名单群
-    if (yorubot.config.aiReply.initiativeList.includes(groupId)) {
+    if (nnkbot.config.aiReply.initiativeList.includes(groupId)) {
       // 被@的后200s内插话概率增大
       const isRecentlyAt = Date.now() - (lastAtTime.get(groupId) || 0) < 200 * 1000;
       // 基础概率
@@ -150,10 +144,6 @@ export default class GroupAIReplyModule extends YoruModuleBase<GroupMessageData>
       // 群友记忆系统
       userMemoryStorage.onMessage(userId, nickName, formattedMessage.message, formattedMessage.isMentionMe);
     }
-*/
-
-    shouldReply = true;
-
 
 
     // 没有命中触发条件直接返回

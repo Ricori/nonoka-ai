@@ -1,6 +1,6 @@
 import { GroupMessageData, PrivateMessageData } from '@/types/event';
-import YoruModuleBase from '@/modules/base';
-import yorubot from '@/core/yoruBot';
+import NonokaModuleBase from '@/modules/base';
+import nnkbot from '@/core/nnkBot';
 import { sleep } from '@/utils/function';
 import { getImgCode } from '@/utils/msgCode';
 import Axios from 'axios';
@@ -16,11 +16,11 @@ enum HPicLevel {
   MIX = 2,
 }
 
-export default class HPicModule extends YoruModuleBase<PrivateMessageData | GroupMessageData> {
+export default class HPicModule extends NonokaModuleBase<PrivateMessageData | GroupMessageData> {
   static NAME = 'HPicModule';
 
   async checkConditions() {
-    if (!yorubot.config.hPic.enable) return false;
+    if (!nnkbot.config.hPic.enable) return false;
     const { message } = this.data;
     const exec = /((要|发|份|点|张)大?(色|h|瑟|涩)图)/.exec(message);
     if (exec !== null) {
@@ -32,7 +32,7 @@ export default class HPicModule extends YoruModuleBase<PrivateMessageData | Grou
   async run() {
     const { message, user_id: userId, message_type: messageType } = this.data;
     const groupId = messageType === 'group' ? this.data.group_id : undefined;
-    const { whiteGroupIds, enableR18 } = yorubot.config.hPic;
+    const { whiteGroupIds, enableR18 } = nnkbot.config.hPic;
 
     const hasPermissions = !groupId || whiteGroupIds.length === 0 || whiteGroupIds.includes(groupId);
     if (!hasPermissions) return;
@@ -51,22 +51,22 @@ export default class HPicModule extends YoruModuleBase<PrivateMessageData | Grou
     count = count > 10 ? 10 : count;
 
     // Get image urls
-    const yoruServiceConfig = yorubot.config.yoruService;
-    const yoruURL = `${yoruServiceConfig.baseUrl}/hpic/get?apikey=${yoruServiceConfig.apiKey}&level=${level}&count=${count}`;
-    const ret = await Axios.get(yoruURL, { timeout: 15000 });
+    const nnkServiceConfig = nnkbot.config.nonokaService;
+    const nnkURL = `${nnkServiceConfig.baseUrl}/hpic/get?apikey=${nnkServiceConfig.apiKey}&level=${level}&count=${count}`;
+    const ret = await Axios.get(nnkURL, { timeout: 15000 });
 
     const imgUrls = ret.data?.list;
 
     if (ret?.data?.success === false || imgUrls.length === 0) {
-      printError('[yoru-service] getHpic API Error.');
-      yorubot.sendMsg(groupId, userId, '色图库炸了！');
+      printError('[NonokaService] getHpic API Error.');
+      nnkbot.sendMsg(groupId, userId, '色图库炸了！');
       return;
     }
 
     // Send images
     for (const url of imgUrls) {
       const msg = getImgCode(url);
-      yorubot.sendMsg(groupId, userId, msg);
+      nnkbot.sendMsg(groupId, userId, msg);
       await sleep(4000);
     }
   }

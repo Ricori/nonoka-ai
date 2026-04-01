@@ -1,18 +1,18 @@
 import { printError, printLog } from '@/utils/print';
 import { GroupMessageData, PrivateMessageData, RequestFirendMessageData } from '@/types/event';
-import { BotConfig, YoruConfig } from '@/types/config';
+import { BotConfig, NonokaConfig } from '@/types/config';
 import { loadConfigFile } from '@/utils/io';
-import YoruModuleBase from '@/modules/base';
-import { YoruWebsocket } from './yoruWS';
+import NonokaModuleBase from '@/modules/base';
+import { YoruWebsocket } from './nnkWS';
 
 const debugMode = process.env.YDEBUG === 'true';
 
-type Module = typeof YoruModuleBase<RequestFirendMessageData> |
-  typeof YoruModuleBase<PrivateMessageData> |
-  typeof YoruModuleBase<GroupMessageData>;
+type Module = typeof NonokaModuleBase<RequestFirendMessageData> |
+  typeof NonokaModuleBase<PrivateMessageData> |
+  typeof NonokaModuleBase<GroupMessageData>;
 
 
-export class YoruCore {
+export class NonokaCore {
   /** YoruWebSocket Object */
   protected yoruWS: YoruWebsocket;
 
@@ -23,19 +23,19 @@ export class YoruCore {
   readonly config: BotConfig;
 
   /** Request modules currently loaded */
-  requestMessageModuleList: typeof YoruModuleBase<RequestFirendMessageData>[] = [];
+  requestMessageModuleList: typeof NonokaModuleBase<RequestFirendMessageData>[] = [];
 
   /** Private message modules currently loaded  */
-  privateMessageModuleList: typeof YoruModuleBase<PrivateMessageData>[] = [];
+  privateMessageModuleList: typeof NonokaModuleBase<PrivateMessageData>[] = [];
 
   /** Group message currently loaded  */
-  groupAtMessageModuleList: typeof YoruModuleBase<GroupMessageData>[] = [];
+  groupAtMessageModuleList: typeof NonokaModuleBase<GroupMessageData>[] = [];
 
   /** Request modules currently loaded  */
-  groupMessageModuleList: typeof YoruModuleBase<GroupMessageData>[] = [];
+  groupMessageModuleList: typeof NonokaModuleBase<GroupMessageData>[] = [];
 
   constructor() {
-    const config = loadConfigFile('config.json') as YoruConfig;
+    const config = loadConfigFile('config.json') as NonokaConfig;
 
     // config
     this.debugMode = debugMode;
@@ -66,21 +66,21 @@ export class YoruCore {
   }
 
   /** Loaded request message type modules */
-  loadModule(type: 'request', ModuleList: typeof YoruModuleBase<RequestFirendMessageData>[]): void;
+  loadModule(type: 'request', ModuleList: typeof NonokaModuleBase<RequestFirendMessageData>[]): void;
   /** Loaded private message type modules */
-  loadModule(type: 'private', ModuleList: typeof YoruModuleBase<PrivateMessageData>[]): void;
+  loadModule(type: 'private', ModuleList: typeof NonokaModuleBase<PrivateMessageData>[]): void;
   /** Loaded private message type modules, support common modules */
-  loadModule(type: 'private', ModuleList: typeof YoruModuleBase<(PrivateMessageData | GroupMessageData) >[]): void;
+  loadModule(type: 'private', ModuleList: typeof NonokaModuleBase<(PrivateMessageData | GroupMessageData) >[]): void;
   /** Loaded groupAt message type modules */
-  loadModule(type: 'groupAt', ModuleList: typeof YoruModuleBase<GroupMessageData>[]): void;
+  loadModule(type: 'groupAt', ModuleList: typeof NonokaModuleBase<GroupMessageData>[]): void;
   /** Loaded groupAt message type modules, support common modules */
-  loadModule(type: 'groupAt', ModuleList: typeof YoruModuleBase<(PrivateMessageData | GroupMessageData) >[]): void;
+  loadModule(type: 'groupAt', ModuleList: typeof NonokaModuleBase<(PrivateMessageData | GroupMessageData) >[]): void;
   /** Loaded group message type modules */
-  loadModule(type: 'group', ModuleList: typeof YoruModuleBase<GroupMessageData>[]): void;
+  loadModule(type: 'group', ModuleList: typeof NonokaModuleBase<GroupMessageData>[]): void;
   /** Loaded group message type modules, support common modules  */
-  loadModule(type: 'group', ModuleList: typeof YoruModuleBase<(PrivateMessageData | GroupMessageData) >[]): void;
+  loadModule(type: 'group', ModuleList: typeof NonokaModuleBase<(PrivateMessageData | GroupMessageData) >[]): void;
   /** Loaded modules in different message type */
-  loadModule(type: 'request' | 'private' | 'groupAt' | 'group', ModuleList: typeof YoruModuleBase[]) {
+  loadModule(type: 'request' | 'private' | 'groupAt' | 'group', ModuleList: typeof NonokaModuleBase[]) {
     this[`${type}MessageModuleList`]?.push(...ModuleList);
   }
 

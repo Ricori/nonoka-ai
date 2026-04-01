@@ -1,9 +1,9 @@
 import { RequestFirendMessageData } from '@/types/event';
-import yorubot from '@/core/yoruBot';
-import yoruStorage from '@/core/yoruStorage';
-import YoruModuleBase from '../base';
+import nnkbot from '@/core/nnkBot';
+import nnkStorage from '@/core/nnkStorage';
+import NonokaModuleBase from '../base';
 
-export default class RequestFriendModule extends YoruModuleBase<RequestFirendMessageData> {
+export default class RequestFriendModule extends NonokaModuleBase<RequestFirendMessageData> {
   static NAME = 'RequestFriendModule';
 
   async checkConditions() {
@@ -13,20 +13,20 @@ export default class RequestFriendModule extends YoruModuleBase<RequestFirendMes
   async run() {
     const userId = this.data.user_id;
     const { flag } = this.data;
-    if (yorubot.config.autoAddFriend || yoruStorage.getIsInToBeAddedList(userId)) {
+    if (nnkbot.config.autoAddFriend || nnkStorage.getIsInToBeAddedList(userId)) {
       // Agree to be added as a friend
-      yorubot.setFriendAddRequest(flag, true);
+      nnkbot.setFriendAddRequest(flag, true);
       // Delete id from to be added list
-      yoruStorage.deleteIdFromToBeAddedList(userId);
+      nnkStorage.deleteIdFromToBeAddedList(userId);
       // Send notification to administrator
-      (yorubot.config.admin || []).forEach((adminId) => {
+      (nnkbot.config.admin || []).forEach((adminId) => {
         if (!Number.isNaN(Number(adminId))) {
-          yorubot.sendPrivateMsg(adminId, `[SystemMessage] 新增好友，Id：${userId}`);
+          nnkbot.sendPrivateMsg(adminId, `[SystemMessage] 新增好友，Id：${userId}`);
         }
       });
     } else {
       // Refuse to be friends
-      yorubot.setFriendAddRequest(flag, false);
+      nnkbot.setFriendAddRequest(flag, false);
     }
 
     // finish

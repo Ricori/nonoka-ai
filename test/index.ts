@@ -1,5 +1,5 @@
-import yorubot from '@/core/yoruBot';
-import yoruSchedule from '@/core/yoruSchedule';
+import nnkbot from '@/core/nnkBot';
+import nnkSchedule from '@/core/nnkSchedule';
 import Axios from 'axios';
 
 import { printError } from '@/utils/print';

@@ -1,6 +1,6 @@
 import { SimpleIntervalJob, AsyncTask } from 'toad-scheduler';
-import yorubot from '@/core/yoruBot';
-import yoruStorage from '@/core/yoruStorage';
+import nnkbot from '@/core/nnkBot';
+import nnkStorage from '@/core/nnkStorage';
 import { printLog } from '@/utils/print';
 import getBiliDynamic from '@/service/bilibili/dynamic';
 import { getImgCode } from '@/utils/msgCode';
@@ -12,14 +12,14 @@ async function checkBiliDynamic(
     const dyData = await getBiliDynamic(uid, myBiliCookie);
     if (dyData) {
       const newTime = dyData.pubDate;
-      const lastestTime = yoruStorage.getBiliLastestDynamicTime(uid);
+      const lastestTime = nnkStorage.getBiliLastestDynamicTime(uid);
       if (newTime > lastestTime) {
-        yoruStorage.setBiliLastestDynamicTime(uid, newTime);
+        nnkStorage.setBiliLastestDynamicTime(uid, newTime);
 
         if (uid === '629994228' && dyData.description.includes('今日速览')) {
           if (dyData.images[0]) {
             groupIds.forEach((groupId) => {
-              yorubot.sendGroupMsg(groupId, getImgCode(dyData.images[0]));
+              nnkbot.sendGroupMsg(groupId, getImgCode(dyData.images[0]));
             });
           }
           return;
@@ -42,7 +42,7 @@ async function checkBiliDynamic(
         const msg = msgTextArr.join('\n');
 
         groupIds.forEach((groupId) => {
-          yorubot.sendGroupMsg(groupId, msg);
+          nnkbot.sendGroupMsg(groupId, msg);
         });
       }
     }
@@ -53,8 +53,8 @@ async function checkBiliDynamic(
 
 
 const task = new AsyncTask('biliTask', async () => {
-  const botIsConnect = yorubot.getIsBotConnecting();
-  const config = yorubot.config.biliDynamicPush;
+  const botIsConnect = nnkbot.getIsBotConnecting();
+  const config = nnkbot.config.biliDynamicPush;
   if (!config.enable || !config.cookie) return;
   if (botIsConnect) {
     Object.keys(config.config).forEach((uid: string, i: number) => {
@@ -73,8 +73,8 @@ const task = new AsyncTask('biliTask', async () => {
 const BilibiliNewSharedJob = new SimpleIntervalJob({ seconds: 180 }, task, { id: 'bilibiliNewShared' });
 
 // 启动bot时将动态最新时间设置为现在，防止立即推送
-Object.keys(yorubot.config.biliDynamicPush.config).forEach((uid: string) => {
-  yoruStorage.setBiliLastestDynamicTime(uid, new Date().getTime());
+Object.keys(nnkbot.config.biliDynamicPush.config).forEach((uid: string) => {
+  nnkStorage.setBiliLastestDynamicTime(uid, new Date().getTime());
 });
 
 

@@ -1,9 +1,9 @@
 import { printLog } from '@/utils/print';
 import { getAtCode, getReplyCode } from '@/utils/msgCode';
 import { SimpleMessageData } from '@/types/event';
-import { YoruCore } from './yoruCore';
+import { NonokaCore } from './nnkCore';
 
-class YoruBot extends YoruCore {
+class NonokaBot extends NonokaCore {
   /** 处理好友请求 */
   setFriendAddRequest(flag: string | number, approve: boolean) {
     this.yoruWS.call('set_friend_add_request', { flag: `${flag}`, approve });
@@ -139,4 +139,4 @@ class YoruBot extends YoruCore {
   }
 }
 
-export default new YoruBot();
+export default new NonokaBot();

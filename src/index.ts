@@ -1,6 +1,6 @@
 
-import yorubot from '@/core/yoruBot';
-import yoruSchedule from '@/core/yoruSchedule';
+import nnkbot from '@/core/nnkBot';
+import nnkSchedule from '@/core/nnkSchedule';
 import BilibiliNewSharedJob from '@/tasks/bilibili';
 import SystemCleanupJob from '@/tasks/clean';
 import TwitterPushJob from '@/tasks/twitter';
@@ -16,10 +16,10 @@ import LocalPictureModule from '@/modules/group/localPic';
 import GroupCommandModule from '@/modules/group/command';
 
 // 加载好友请求模块
-yorubot.loadModule('request', [RequestFriendModule]);
+nnkbot.loadModule('request', [RequestFriendModule]);
 
 // 加载私聊消息模块
-yorubot.loadModule('private', [
+nnkbot.loadModule('private', [
   AdminModule,
   ImageSearchModule,
   HPicModule,
@@ -27,7 +27,7 @@ yorubot.loadModule('private', [
 ]);
 
 // 加载群@消息模块
-yorubot.loadModule('groupAt', [
+nnkbot.loadModule('groupAt', [
   GroupCommandModule,
   ImageSearchModule,
   LocalPictureModule,
@@ -36,7 +36,7 @@ yorubot.loadModule('groupAt', [
 ]);
 
 // 加载群消息默认监听
-yorubot.loadModule('group', [
+nnkbot.loadModule('group', [
   GroupCommandModule,
   LocalPictureModule,
   YkhrOnedriveModule,
@@ -46,11 +46,11 @@ yorubot.loadModule('group', [
 ]);
 
 // 加载定时任务
-yoruSchedule.loadJob([
+nnkSchedule.loadJob([
   SystemCleanupJob,
   BilibiliNewSharedJob,
   TwitterPushJob,
 ]);
 
 // ののか，Link Start ~
-yorubot.start();
+nnkbot.start();

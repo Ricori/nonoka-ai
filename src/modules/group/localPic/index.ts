@@ -1,7 +1,7 @@
 import path from 'path';
 import { GroupMessageData } from '@/types/event';
-import YoruModuleBase from '@/modules/base';
-import yorubot from '@/core/yoruBot';
+import NonokaModuleBase from '@/modules/base';
+import nnkbot from '@/core/nnkBot';
 import { getImgCode } from '@/utils/msgCode';
 import {
   getImgs, getReplyMsgId, hasImage, hasReply,
@@ -12,7 +12,7 @@ import {
 } from './functions';
 
 
-export default class LocalPictureModule extends YoruModuleBase<GroupMessageData> {
+export default class LocalPictureModule extends NonokaModuleBase<GroupMessageData> {
   static NAME = 'LocalPictureModule';
 
   private isAddCommand = false;
@@ -56,16 +56,16 @@ export default class LocalPictureModule extends YoruModuleBase<GroupMessageData>
     // 解析关键词：/加图 xxx
     const match = message.replace(/\[CQ:[^\]]+\]/g, '').match(/\/加图\s+(\S+)/);
     if (!match) {
-      yorubot.sendGroupMsg(groupId, '格式：/加图 nsy名', userId);
+      nnkbot.sendGroupMsg(groupId, '格式：/加图 nsy名', userId);
       return;
     }
     const keyword = match[1];
     if (keyword.length < 2) {
-      yorubot.sendGroupMsg(groupId, '关键词至少需要两个字', userId);
+      nnkbot.sendGroupMsg(groupId, '关键词至少需要两个字', userId);
       return;
     }
     if (keyword.includes('龙')) {
-      yorubot.sendGroupMsg(groupId, '该关键词不允许使用', userId);
+      nnkbot.sendGroupMsg(groupId, '该关键词不允许使用', userId);
       return;
     }
 
@@ -73,7 +73,7 @@ export default class LocalPictureModule extends YoruModuleBase<GroupMessageData>
     if (hasReply(message)) {
       // 从引用的消息中提取图片
       const replyMsgId = getReplyMsgId(message);
-      const replyMsgData = await yorubot.getMessageFromId(replyMsgId);
+      const replyMsgData = await nnkbot.getMessageFromId(replyMsgId);
       if (replyMsgData && hasImage(replyMsgData.message)) {
         imgs.push(...getImgs(replyMsgData.message));
       }
@@ -98,10 +98,10 @@ export default class LocalPictureModule extends YoruModuleBase<GroupMessageData>
 
     if (successCount > 0) {
       refreshKeywords();
-      yorubot.sendGroupMsg(groupId, `已存储 ${successCount} 张图片到「${keyword}」`);
+      nnkbot.sendGroupMsg(groupId, `已存储 ${successCount} 张图片到「${keyword}」`);
       printLog(`[LocalPic] ${userId} 添加了 ${successCount} 张图片到 ${keyword}`);
     } else {
-      yorubot.sendGroupMsg(groupId, '图片保存失败，请重试', userId);
+      nnkbot.sendGroupMsg(groupId, '图片保存失败，请重试', userId);
     }
   }
 
@@ -111,6 +111,6 @@ export default class LocalPictureModule extends YoruModuleBase<GroupMessageData>
     if (!picPath) return;
 
     const fileUri = `file:///${picPath.replace(/\\/g, '/')}`;
-    yorubot.sendGroupMsg(groupId, getImgCode(fileUri));
+    nnkbot.sendGroupMsg(groupId, getImgCode(fileUri));
   }
 }

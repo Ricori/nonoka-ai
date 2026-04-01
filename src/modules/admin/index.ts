@@ -1,11 +1,11 @@
 import { PrivateMessageData } from '@/types/event';
-import yorubot from '@/core/yoruBot';
+import nnkbot from '@/core/nnkBot';
 import { createMsgFromTweetId } from '@/tasks/twitter';
 import messageStorage from '@/modules/aiReply/storage/message';
-import yoruSchedule from '@/core/yoruSchedule';
-import YoruModuleBase from '../base';
+import nnkSchedule from '@/core/nnkSchedule';
+import NonokaModuleBase from '../base';
 
-export default class AdminModule extends YoruModuleBase<PrivateMessageData> {
+export default class AdminModule extends NonokaModuleBase<PrivateMessageData> {
   static NAME = 'AdminModule';
 
   private taskControlMatch: RegExpMatchArray | null = null;
@@ -13,7 +13,7 @@ export default class AdminModule extends YoruModuleBase<PrivateMessageData> {
   private pushTweetMatch: RegExpMatchArray | null = null;
 
   async checkConditions() {
-    const adminList = yorubot.config.admin || [];
+    const adminList = nnkbot.config.admin || [];
     const userId = this.data.user_id;
     // Check userId in admin list
     if (adminList.indexOf(userId) === -1) {
@@ -51,7 +51,7 @@ export default class AdminModule extends YoruModuleBase<PrivateMessageData> {
     // 1. clean memory
     if (message === '/clean-memory') {
       messageStorage.cleanChatConversations();
-      yorubot.sendPrivateMsg(userId, '[YoruSystem] Memory cleaned.');
+      nnkbot.sendPrivateMsg(userId, '[NonokaSystem] Memory cleaned.');
       return;
     }
 
@@ -61,24 +61,24 @@ export default class AdminModule extends YoruModuleBase<PrivateMessageData> {
       switch (task) {
         case 'twitter':
           if (action === 'on') {
-            yoruSchedule.startById('twitterPush');
-            yorubot.sendPrivateMsg(userId, '[YoruSystem] Twitter task enabled.');
+            nnkSchedule.startById('twitterPush');
+            nnkbot.sendPrivateMsg(userId, '[NonokaSystem] Twitter task enabled.');
           } else {
-            yoruSchedule.stopById('twitterPush');
-            yorubot.sendPrivateMsg(userId, '[YoruSystem] Twitter task disabled.');
+            nnkSchedule.stopById('twitterPush');
+            nnkbot.sendPrivateMsg(userId, '[NonokaSystem] Twitter task disabled.');
           }
           return;
         case 'bilibili':
           if (action === 'on') {
-            yoruSchedule.startById('bilibiliNewShared');
-            yorubot.sendPrivateMsg(userId, '[YoruSystem] Bilibili task enabled.');
+            nnkSchedule.startById('bilibiliNewShared');
+            nnkbot.sendPrivateMsg(userId, '[NonokaSystem] Bilibili task enabled.');
           } else {
-            yoruSchedule.stopById('bilibiliNewShared');
-            yorubot.sendPrivateMsg(userId, '[YoruSystem] Bilibili task disabled.');
+            nnkSchedule.stopById('bilibiliNewShared');
+            nnkbot.sendPrivateMsg(userId, '[NonokaSystem] Bilibili task disabled.');
           }
           return;
         default:
-          yorubot.sendPrivateMsg(userId, '[YoruSystem] Unsupported task.');
+          nnkbot.sendPrivateMsg(userId, '[NonokaSystem] Unsupported task.');
           return;
       }
     }
@@ -89,9 +89,9 @@ export default class AdminModule extends YoruModuleBase<PrivateMessageData> {
       const msgArr = await createMsgFromTweetId(tweetId);
       if (!msgArr || msgArr.length === 0) return;
       for (const msg of msgArr) {
-        yorubot.sendGroupMsg(Number(targetGroupId), msg);
+        nnkbot.sendGroupMsg(Number(targetGroupId), msg);
       }
-      yorubot.sendPrivateMsg(userId, `[YoruSystem] Push ${tweetId} to ${targetGroupId} successed.`);
+      nnkbot.sendPrivateMsg(userId, `[NonokaSystem] Push ${tweetId} to ${targetGroupId} successed.`);
     }
   }
 }
