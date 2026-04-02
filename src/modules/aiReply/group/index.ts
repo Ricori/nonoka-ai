@@ -17,6 +17,7 @@ import userMemoryStorage from '../storage/userMemory';
 const sessionTimers = new Map<number, NodeJS.Timeout | null>();
 const processingLocks = new Set<number>(); // 正在回复的群的锁
 const lastAtTime = new Map<number, number>(); // 记录每个群最后被@的时间
+const lastInitiativeTime = new Map<number, number>(); // 记录每个群最后主动插话的时间
 
 
 async function processReplyQueue(groupId: number, isInitiativeReply = false) {
@@ -128,17 +129,32 @@ export default class GroupAIReplyModule extends NonokaModuleBase<GroupMessageDat
       lastAtTime.set(groupId, Date.now());
     }
 
-    // 主动插话的白名单群
+    // 主动插话的群
     if (nnkbot.config.aiReply.initiativeList.includes(groupId)) {
-      // 被@的后120s内插话概率增大
-      const isRecentlyAt = Date.now() - (lastAtTime.get(groupId) || 0) < 120 * 1000;
-      // 基础概率
-      const baseTriggerChance = isRecentlyAt ? 0.13 : 0.01;
+      const now = Date.now();
+      const lastAt = lastAtTime.get(groupId) || 0;
+      const lastInitiative = lastInitiativeTime.get(groupId) || 0;
+
+      // 被@的后100s内插话概率增大
+      const isRecentlyAt = now - lastAt < 100 * 1000;
       // 附加概率
-      const additional = getAdditionalChance(groupId, formattedMessage.message);
-      if (Math.random() < baseTriggerChance + additional) {
+      const additional = getAdditionalChance(formattedMessage.message);
+      // 概率
+      let triggerChance = (isRecentlyAt ? 0.10 : 0.01) + additional;
+
+      // 如果上次是主动插话且20s内没被@，则开始衰减
+      if (lastInitiative > lastAt && now - lastAt >= 20 * 1000) {
+        const timeSinceAt = now - lastAt;
+        const decayPeriods = Math.floor(timeSinceAt / (20 * 1000));
+        // 每20s衰减，最低到2%
+        triggerChance = Math.max(0.01, triggerChance * (0.5 ** decayPeriods));
+      }
+
+
+      if (Math.random() < triggerChance) {
         shouldReply = true;
         isInitiativeReply = true;
+        lastInitiativeTime.set(groupId, now);
       }
 
       // 群友记忆系统
