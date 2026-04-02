@@ -163,7 +163,7 @@ function createHtml(tweetData: tweetDisplayData) {
       ${tweetData.transText
       ? `<div class="card">
       <div class="ltr">
-        <span>由 ののかちゃん </span><span class="ltr-blue">翻译</span>
+        <span>由 ののか </span><span class="ltr-blue">翻译自 日语</span>
       </div>
       <div class="card-text">
       ${nl2br(tweetData.transText)}
