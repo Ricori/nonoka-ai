@@ -9,6 +9,9 @@ data/memory
 config.json
 config_github.json
 
+# Test
+test/
+
 # Logs
 logs
 *.log

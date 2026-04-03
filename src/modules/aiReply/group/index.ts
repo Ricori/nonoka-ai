@@ -102,7 +102,7 @@ export default class GroupAIReplyModule extends NonokaModuleBase<GroupMessageDat
     } = this.data;
     const nickName = sender.nickname || `${userId}`;
 
-    let shouldReply = false; // 需要回复
+    let shouldReply = false; // 需要AI回复
     let isInitiativeReply = false; // 是否是主动插话
 
     let replyMessage: SimpleMessageData | undefined;
@@ -123,6 +123,16 @@ export default class GroupAIReplyModule extends NonokaModuleBase<GroupMessageDat
     // 记录群对话记录
     messageStorage.addGroupChatConversations(groupId, formattedMessage);
 
+    //  -------- 固定回复逻辑 --------
+    // 1. 匹配"要不要xxx"时随机回复"要"或"不要"
+    if (/要不要/.test(formattedMessage.message)) {
+      const reply = Math.random() < 0.5 ? '乃乃香建议你 要！' : '乃乃香建议你 不要！';
+      nnkbot.sendGroupMsg(groupId, reply);
+      return;
+    }
+
+
+    // -------- AI 回复逻辑 --------
     if (formattedMessage.isMentionMe) {
       // 被提到了
       shouldReply = true;

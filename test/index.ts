@@ -14,4 +14,4 @@ import { testAI } from './ai';
 
 // getLatestTweet('Cho_KaguyaHime').then((res) => console.log(res));
 
-// testAI()
+testAI()
