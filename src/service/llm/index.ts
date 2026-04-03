@@ -1,20 +1,29 @@
 import OpenAI from 'openai';
 import type { ChatCompletionMessageParam } from 'openai/resources';
 import nnkbot from '@/core/nnkBot';
-import { printError, printLog } from '@/utils/print';
+import { printError } from '@/utils/print';
 import Axios from 'axios';
 import type { FormattedMessage } from '@/types/message';
 import {
   SYSTEM_PROMPT, SECURITY_PROMPT, TRANSLATE_PROMPT, getSummarizePrompt,
 } from './prompt';
+import { getAnthropicLLMReply } from './authropic';
 
 const client = new OpenAI({
   apiKey: nnkbot.config.aiReply.apiKey,
   baseURL: nnkbot.config.aiReply.baseUrl,
 });
 
+export async function getLLMReply(formattedMessage: FormattedMessage[]): Promise<string | null> {
+  if (nnkbot.config.aiReply.authropicKey) {
+    // 配置了 Authropic key,就用 claude 模型
+    const anthropicRes = await getAnthropicLLMReply(formattedMessage);
+    if (anthropicRes) {
+      // 有数据就 return，不行就走下面 kimi2.5模型
+      return anthropicRes;
+    }
+  }
 
-export async function getLLMReply(formattedMessage: FormattedMessage[]) {
   const systemMsg: ChatCompletionMessageParam = {
     role: 'system',
     content: [
@@ -26,6 +35,7 @@ export async function getLLMReply(formattedMessage: FormattedMessage[]) {
     ],
   };
 
+  // 查最后一张图片消息，加缓存标记
   const lastImgIndex = formattedMessage.map((msg) => !!msg.imgUrl).lastIndexOf(true);
   const chatCompletionMessages = formattedMessage.map((msg, index) => {
     let content: ChatCompletionMessageParam['content'] = msg.message;
@@ -46,6 +56,7 @@ export async function getLLMReply(formattedMessage: FormattedMessage[]) {
         },
       ];
     } else if (msg.cacheControl) {
+      // 普通消息缓存标记
       content = [{
         type: 'text',
         text: msg.message,
@@ -67,7 +78,7 @@ export async function getLLMReply(formattedMessage: FormattedMessage[]) {
       max_tokens: 150,
     },
     { timeout: 20000 },
-  ).catch((e) => { printError(`[AiReply Error] ${e}`); return null; });
+  ).catch((e) => { printError(`[AiReply Error][Kimi] ${e}`); return null; });
 
   if (!response?.choices?.[0]?.message?.content) {
     // 多半是远程图片拉取失败，去掉图片消息后重试
@@ -87,12 +98,10 @@ export async function getLLMReply(formattedMessage: FormattedMessage[]) {
         max_tokens: 150,
       },
       { timeout: 20000 },
-    ).catch((e) => { printError(`[AiReply Retry Error] ${e}`); return null; });
+    ).catch((e) => { printError(`[AiReply Error][Kimi Retry] ${e}`); return null; });
   }
 
   if (response?.choices?.[0]?.message?.content) {
-    // printLog('请求缓存 Token');
-    // console.log(response.usage?.prompt_tokens_details);
     return response.choices[0].message.content as string;
   }
 
@@ -125,6 +134,7 @@ export async function summarizeUserTraits(
   return existingTraits;
 }
 
+/** 调用LLM翻译 */
 export async function translateText(text: string) {
   const ret = await Axios.post(`${nnkbot.config.aiReply.baseUrl}/chat/completions`, {
     model: 'deepseek-v3.2-exp',
