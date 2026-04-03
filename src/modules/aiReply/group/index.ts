@@ -70,10 +70,10 @@ async function processReplyQueue(groupId: number, isInitiativeReply = false) {
       }
     }
   } finally {
-    // 发完消息后延迟3秒再解锁，控制消息频率
+    // 发完消息后延迟2.5秒再解锁，控制消息频率
     setTimeout(() => {
       processingLocks.delete(groupId);
-    }, 3000);
+    }, 2500);
   }
 }
 
@@ -145,19 +145,19 @@ export default class GroupAIReplyModule extends NonokaModuleBase<GroupMessageDat
       const lastAt = lastAtTime.get(groupId) || 0;
       const lastInitiative = lastInitiativeTime.get(groupId) || 0;
 
-      // 被@的后100s内插话概率增大
+      // 被提到后100s内插话概率增大
       const isRecentlyAt = now - lastAt < 100 * 1000;
       // 附加概率
       const additional = getAdditionalChance(formattedMessage.message);
       // 概率
-      let triggerChance = (isRecentlyAt ? 0.10 : 0.01) + additional;
+      let triggerChance = (isRecentlyAt ? 0.12 : 0.015) + additional;
 
-      // 如果上次是主动插话且20s内没被@，则开始衰减
-      if (lastInitiative > lastAt && now - lastAt >= 20 * 1000) {
+      // 如果上次是主动插话且30s内没被提到，则开始衰减
+      if (lastInitiative > lastAt && now - lastAt >= 25 * 1000) {
         const timeSinceAt = now - lastAt;
-        const decayPeriods = Math.floor(timeSinceAt / (20 * 1000));
-        // 每20s衰减，最低到2%
-        triggerChance = Math.max(0.01, triggerChance * (0.5 ** decayPeriods));
+        const decayPeriods = Math.floor(timeSinceAt / (25 * 1000));
+        // 每25s衰减，最低到1.5%
+        triggerChance = Math.max(0.015, triggerChance * (0.5 ** decayPeriods));
       }
 
 

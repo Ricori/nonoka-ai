@@ -1,9 +1,6 @@
 export function getAdditionalChance(text: string): number {
   let score = 0;
 
-  // 被提到
-  if (text.includes('乃乃') || text.includes('nono')) score += 0.7;
-
   // 核心人设词第一梯队
   const coreInterests = /写作|小说|文学部|投稿|稿子|可爱|数学|算数/;
   if (coreInterests.test(text)) score += 0.3;
@@ -13,5 +10,5 @@ export function getAdditionalChance(text: string): number {
   if (emotionKeywords.test(text)) score += 0.2;
 
 
-  return Math.min(score, 0.7); // 最高加到 70%, 最低 -20%
+  return Math.min(score, 0.7);
 }

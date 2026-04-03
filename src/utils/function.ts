@@ -97,8 +97,8 @@ export function sleep(ms: number) { return new Promise((resolve) => { setTimeout
  * @returns 延迟毫秒数
  */
 export function calculateTypingDelay(text: string): number {
-  const baseDelay = 600; // 基础延迟
-  const timePerChar = 150; // 假设人类每打一个字需要 120ms
+  const baseDelay = 500; // 基础延迟
+  const timePerChar = 120; // 假设人类每打一个字需要 120ms
   const jitter = Math.floor(Math.random() * 600) - 300; // 随机波动
   return Math.max(baseDelay + (text.length * timePerChar) + jitter, 500);
 }
