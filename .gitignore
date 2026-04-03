@@ -10,7 +10,7 @@ config.json
 config_github.json
 
 # Test
-test/
+test
 
 # Logs
 logs
