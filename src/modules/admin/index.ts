@@ -3,6 +3,9 @@ import nnkbot from '@/core/nnkBot';
 import { createMsgFromTweetId } from '@/tasks/twitter';
 import messageStorage from '@/modules/aiReply/storage/message';
 import nnkSchedule from '@/core/nnkSchedule';
+import axios from 'axios';
+import { getRecordCode } from '@/utils/msgCode';
+import { getTTSAudio } from '@/service/tts';
 import NonokaModuleBase from '../base';
 
 export default class AdminModule extends NonokaModuleBase<PrivateMessageData> {
@@ -11,6 +14,8 @@ export default class AdminModule extends NonokaModuleBase<PrivateMessageData> {
   private taskControlMatch: RegExpMatchArray | null = null;
 
   private pushTweetMatch: RegExpMatchArray | null = null;
+
+  private ttsMatch: RegExpMatchArray | null = null;
 
   async checkConditions() {
     const adminList = nnkbot.config.admin || [];
@@ -22,20 +27,32 @@ export default class AdminModule extends NonokaModuleBase<PrivateMessageData> {
 
     // Exec administrator command
     const { message } = this.data;
+
+    // 0. help
+    if (message === '/help') {
+      return true;
+    }
+
     // 1. clean memory
     if (message === '/clean-memory') {
       return true;
     }
 
     // 2. task control - /task twitter|bilibili on|off
-    this.taskControlMatch = message.match(/\/task\s+(\w+)\s+(on|off)/);
+    this.taskControlMatch = message.match(/^\/task\s+(\w+)\s+(on|off)$/);
     if (this.taskControlMatch) {
       return true;
     }
 
     // 3. push twitter - /push-tweet <groupId> <tweetUrl or tweetId>
-    this.pushTweetMatch = message.match(/\/push-tweet\s+(\d+).*(?:status\/|\s+)(\d+)/);
+    this.pushTweetMatch = message.match(/^\/push-tweet\s+(\d+).*(?:status\/|\s+)(\d+)$/);
     if (this.pushTweetMatch) {
+      return true;
+    }
+
+    // 4. tts - /tts <text>
+    this.ttsMatch = message.match(/^\/tts\s+(.+)$/);
+    if (this.ttsMatch) {
       return true;
     }
 
@@ -47,6 +64,35 @@ export default class AdminModule extends NonokaModuleBase<PrivateMessageData> {
     this.finished = true;
 
     const { user_id: userId, message } = this.data;
+
+    // 0. help
+    if (message === '/help') {
+      const helpText = [
+        '=== Nonoka Admin Commands ===',
+        '',
+        '/help',
+        '  显示所有可用命令',
+        '',
+        '/clean-memory',
+        '  清理 AI 对话记忆',
+        '',
+        '/task <taskName> <on|off>',
+        '  控制定时任务开关',
+        '  taskName: twitter | bilibili',
+        '  示例: /task twitter on',
+        '',
+        '/push-tweet <groupId> <tweetUrl|tweetId>',
+        '  推送推文到指定群组',
+        '  示例: /push-tweet 123456 https://twitter.com/user/status/123456',
+        '  示例: /push-tweet 123456 123456',
+        '',
+        '/tts <text>',
+        '  文字转语音',
+        '  示例: /tts おはようございます。',
+      ].join('\n');
+      nnkbot.sendPrivateMsg(userId, helpText);
+      return;
+    }
 
     // 1. clean memory
     if (message === '/clean-memory') {
@@ -92,6 +138,18 @@ export default class AdminModule extends NonokaModuleBase<PrivateMessageData> {
         nnkbot.sendGroupMsg(Number(targetGroupId), msg);
       }
       nnkbot.sendPrivateMsg(userId, `[NonokaSystem] Push ${tweetId} to ${targetGroupId} successed.`);
+    }
+
+    // 4. tts
+    if (this.ttsMatch) {
+      const [, text] = this.ttsMatch;
+      const base64 = await getTTSAudio(text);
+      if (base64) {
+        const recordCode = getRecordCode(base64);
+        nnkbot.sendPrivateMsg(userId, recordCode);
+      } else {
+        nnkbot.sendPrivateMsg(userId, '[NonokaSystem] TTS failed.');
+      }
     }
   }
 }

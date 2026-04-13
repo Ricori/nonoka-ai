@@ -133,3 +133,7 @@ export function getShareCode_UNSAFE(url: string, title: string, content?: string
     image,
   });
 }
+
+export function getRecordCode(file: string) {
+  return getMessageCode('record', { file });
+}

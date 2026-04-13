@@ -31,8 +31,7 @@ export async function getAnthropicLLMReply(formattedMessage: FormattedMessage[])
         return { role: msg.role, content: [textBlock, imageBlock] };
       } catch {
         // image fetch failed, fall through to text-only
-
-        console.log('image fetch failed, fall through to text-only');
+        printLog('[AiReply Error][Claude] image fetch failed, fall through to text-only');
       }
     }
     return { role: msg.role, content: msg.message };
