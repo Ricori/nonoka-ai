@@ -5,7 +5,8 @@ import { printError } from '@/utils/print';
 import Axios from 'axios';
 import type { FormattedMessage } from '@/types/message';
 import {
-  SYSTEM_PROMPT, SECURITY_PROMPT, TRANSLATE_PROMPT, getSummarizePrompt,
+  SYSTEM_PROMPT, SECURITY_PROMPT, TRANSLATE_TO_CN_PROMPT, getSummarizePrompt,
+  TRANSLATE_TO_JP_PROMPT,
 } from './prompt';
 import { getAnthropicLLMReply } from './authropic';
 
@@ -135,11 +136,11 @@ export async function summarizeUserTraits(
 }
 
 /** 调用LLM翻译 */
-export async function translateText(text: string) {
+export async function translateText(text: string, lang = 'cn') {
   const ret = await Axios.post(`${nnkbot.config.aiReply.baseUrl}/chat/completions`, {
     model: 'deepseek-v3.2-exp',
     messages: [
-      { role: 'user', content: TRANSLATE_PROMPT + text },
+      { role: 'user', content: (lang === 'cn' ? TRANSLATE_TO_CN_PROMPT : TRANSLATE_TO_JP_PROMPT) + text },
     ],
   }, {
     headers: {

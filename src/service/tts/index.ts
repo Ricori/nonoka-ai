@@ -23,5 +23,5 @@ export async function getTTSAudio(text: string) {
   } catch (error) {
     printError(`[NonokaSystem] TTS failed: ${error}`);
   }
-  return undefined;
+  return null;
 }

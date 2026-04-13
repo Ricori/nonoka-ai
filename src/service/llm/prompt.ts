@@ -107,6 +107,10 @@ ${messages.join('\n')}
 }
 
 
-export const TRANSLATE_PROMPT = `你是翻译官，主要翻译日文。
+export const TRANSLATE_TO_CN_PROMPT = `你是翻译官，主要将日文翻译为中文。
 如果碰到“まのさば”翻译为“魔裁”，碰到“まのむら”翻译为“魔法少女因习村”。不理解的名词不翻译。
 现在把以下内容翻译成中文，不要包含tag，不要有多余内容：\n`;
+
+export const TRANSLATE_TO_JP_PROMPT = `你是翻译官，主要将中文翻译为日文。
+遇到人名直接翻译为平假名或者片假名。比如 千果 翻译为 ちか。\n
+现在把以下内容翻译成日文，不要有多余内容：\n`;

@@ -4,8 +4,10 @@ import nnkbot from '@/core/nnkBot';
 import {
   calculateTypingDelay, getReplyMsgId, hasReply, sleep,
 } from '@/utils/function';
-import { getLLMReply } from '@/service/llm';
+import { getLLMReply, translateText } from '@/service/llm';
 import { printLog } from '@/utils/print';
+import { getTTSAudio } from '@/service/tts';
+import { getRecordCode } from '@/utils/msgCode';
 import messageStorage from '../storage/message';
 import { processStickerTag } from '../stickerMap';
 import { getAdditionalChance } from './relevance';
@@ -59,14 +61,31 @@ async function processReplyQueue(groupId: number, isInitiativeReply = false) {
         .map((msg) => msg.trim())
         .filter((msg) => msg.length > 0);
 
-      // 分段发送
-      for (let i = 0; i < messages.length; i++) {
-        const msg = messages[i].trim();
-        if (i > 0) {
-          const delay = calculateTypingDelay(msg);
-          await sleep(delay);
+      if (Math.random() < 0.55) {
+        // 分段语音发送
+        for (let i = 0; i < messages.length; i++) {
+          const msg = messages[i].trim();
+          if (!msg.includes('image')) {
+            const jpText = await translateText(msg, 'jp');
+            if (!jpText) return;
+            console.log(jpText);
+            const base64 = await getTTSAudio(jpText);
+            if (base64) {
+              const recordCode = getRecordCode(base64);
+              nnkbot.sendGroupMsg(groupId, recordCode);
+            }
+          }
         }
-        nnkbot.sendGroupMsg(groupId, msg);
+      } else {
+        // 分段文字发送
+        for (let i = 0; i < messages.length; i++) {
+          const msg = messages[i].trim();
+          if (i > 0) {
+            const delay = calculateTypingDelay(msg);
+            await sleep(delay);
+          }
+          nnkbot.sendGroupMsg(groupId, msg);
+        }
       }
     }
   } finally {

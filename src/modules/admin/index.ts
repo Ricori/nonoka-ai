@@ -3,9 +3,9 @@ import nnkbot from '@/core/nnkBot';
 import { createMsgFromTweetId } from '@/tasks/twitter';
 import messageStorage from '@/modules/aiReply/storage/message';
 import nnkSchedule from '@/core/nnkSchedule';
-import axios from 'axios';
 import { getRecordCode } from '@/utils/msgCode';
 import { getTTSAudio } from '@/service/tts';
+import { translateText } from '@/service/llm';
 import NonokaModuleBase from '../base';
 
 export default class AdminModule extends NonokaModuleBase<PrivateMessageData> {
