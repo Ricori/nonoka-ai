@@ -71,18 +71,10 @@ export default class GroupCommandModule extends NonokaModuleBase<GroupMessageDat
     // 3. tts
     if (this.ttsMatch) {
       const [, text] = this.ttsMatch;
-      const code = text.charCodeAt(0);
-      let isJp = false;
-      if (code >= 0x3040 && code <= 0x309F) {
-        // 平假名
-        isJp = true;
-      } else if (code >= 0x30A0 && code <= 0x30FF) {
-        // 片假名
-        isJp = true;
-      }
-
       let base64: string | null;
-      if (isJp) {
+      const japaneseRegex = /[\u3040-\u309F\u30A0-\u30FF]/;
+      if (japaneseRegex.test(text)) {
+        // 日文
         base64 = await getTTSAudio(text);
       } else {
         // 非日文则翻译
