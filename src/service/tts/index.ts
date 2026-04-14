@@ -8,14 +8,14 @@ export async function getTTSAudio(text: string) {
   const authorization = `Bearer ${nnkServiceConfig.apiKey}${nnkServiceConfig.apiKey}${nnkServiceConfig.apiKey}${nnkServiceConfig.apiKey}`;
 
   const urls = [
-    'https://genie-tts-api-swotmwpmpu.cn-shanghai.fcapp.run/tts',
     'https://ricori--genie-tts-api-fastapi-app.modal.run/tts',
+    'https://genie-tts-api-swotmwpmpu.cn-shanghai.fcapp.run/tts',
   ];
 
   // Randomly shuffle URLs
-  const shuffledUrls = Math.random() < 0.5 ? urls : [urls[1], urls[0]];
+  // const shuffledUrls = Math.random() < 0.5 ? urls : [urls[1], urls[0]];
 
-  for (const url of shuffledUrls) {
+  for (const url of urls) {
     try {
       const response = await axios.post(
         url,
