@@ -49,34 +49,31 @@ async function processReplyQueue(groupId: number, isInitiativeReply = false) {
       aiReplyText = await getLLMReply([...history, ...(userMemoryPrompt ? [userMemoryPrompt] : [])]);
     }
 
-    printLog(`[GroupAIReplyModule] Auto Reply: ${aiReplyText}`);
+    printLog(`[GroupAIReplyModule] Auto reply: ${aiReplyText}`);
     if (aiReplyText) {
       // 记忆自己的回复
       const aiReplyMessageParam = formatAssistantMessage(aiReplyText);
       messageStorage.addGroupChatConversations(groupId, aiReplyMessageParam);
 
-      // 回复消息处理
-      const messages = processStickerTag(aiReplyText)
-        .split('||')
-        .map((msg) => msg.trim())
-        .filter((msg) => msg.length > 0);
-
       if (Math.random() < 0.55) {
-        // 分段语音发送
-        for (let i = 0; i < messages.length; i++) {
-          const msg = messages[i].trim();
-          if (!msg.includes('image')) {
-            const jpText = await translateText(msg, 'jp');
-            if (!jpText) return;
-            console.log(jpText);
-            const base64 = await getTTSAudio(jpText);
-            if (base64) {
-              const recordCode = getRecordCode(base64);
-              nnkbot.sendGroupMsg(groupId, recordCode);
-            }
+        // 语音发送
+        const message = aiReplyText.replace(/\[表情:\s*(.*?)\]/g, '').replace('||', '').trim();
+        if (message) {
+          const jpText = await translateText(message, 'jp');
+          if (!jpText) return;
+          printLog(`[GroupAIReplyModule] Auto reply audio: ${jpText}`);
+          const base64 = await getTTSAudio(jpText);
+          if (base64) {
+            const recordCode = getRecordCode(base64);
+            nnkbot.sendGroupMsg(groupId, recordCode);
           }
         }
       } else {
+        // 回复消息处理
+        const messages = processStickerTag(aiReplyText)
+          .split('||')
+          .map((msg) => msg.trim())
+          .filter((msg) => msg.length > 0);
         // 分段文字发送
         for (let i = 0; i < messages.length; i++) {
           const msg = messages[i].trim();

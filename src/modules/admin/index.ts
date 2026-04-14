@@ -3,9 +3,6 @@ import nnkbot from '@/core/nnkBot';
 import { createMsgFromTweetId } from '@/tasks/twitter';
 import messageStorage from '@/modules/aiReply/storage/message';
 import nnkSchedule from '@/core/nnkSchedule';
-import { getRecordCode } from '@/utils/msgCode';
-import { getTTSAudio } from '@/service/tts';
-import { translateText } from '@/service/llm';
 import NonokaModuleBase from '../base';
 
 export default class AdminModule extends NonokaModuleBase<PrivateMessageData> {
@@ -14,8 +11,6 @@ export default class AdminModule extends NonokaModuleBase<PrivateMessageData> {
   private taskControlMatch: RegExpMatchArray | null = null;
 
   private pushTweetMatch: RegExpMatchArray | null = null;
-
-  private ttsMatch: RegExpMatchArray | null = null;
 
   async checkConditions() {
     const adminList = nnkbot.config.admin || [];
@@ -47,12 +42,6 @@ export default class AdminModule extends NonokaModuleBase<PrivateMessageData> {
     // 3. push twitter - /push-tweet <groupId> <tweetUrl or tweetId>
     this.pushTweetMatch = message.match(/^\/push-tweet\s+(\d+).*(?:status\/|\s+)(\d+)$/);
     if (this.pushTweetMatch) {
-      return true;
-    }
-
-    // 4. tts - /tts <text>
-    this.ttsMatch = message.match(/^\/tts\s+(.+)$/);
-    if (this.ttsMatch) {
       return true;
     }
 
@@ -138,18 +127,6 @@ export default class AdminModule extends NonokaModuleBase<PrivateMessageData> {
         nnkbot.sendGroupMsg(Number(targetGroupId), msg);
       }
       nnkbot.sendPrivateMsg(userId, `[NonokaSystem] Push ${tweetId} to ${targetGroupId} successed.`);
-    }
-
-    // 4. tts
-    if (this.ttsMatch) {
-      const [, text] = this.ttsMatch;
-      const base64 = await getTTSAudio(text);
-      if (base64) {
-        const recordCode = getRecordCode(base64);
-        nnkbot.sendPrivateMsg(userId, recordCode);
-      } else {
-        nnkbot.sendPrivateMsg(userId, '[NonokaSystem] TTS failed.');
-      }
     }
   }
 }

@@ -1,6 +1,9 @@
 import { GroupMessageData } from '@/types/event';
 import nnkbot from '@/core/nnkBot';
 import { createMsgFromTweetId } from '@/tasks/twitter';
+import { getRecordCode } from '@/utils/msgCode';
+import { getTTSAudio } from '@/service/tts';
+import { translateText } from '@/service/llm';
 import NonokaModuleBase from '../base';
 
 export default class GroupCommandModule extends NonokaModuleBase<GroupMessageData> {
@@ -10,24 +13,31 @@ export default class GroupCommandModule extends NonokaModuleBase<GroupMessageDat
 
   private pushTweetMatch: RegExpMatchArray | null = null;
 
+  private ttsMatch: RegExpMatchArray | null = null;
+
   async checkConditions() {
     const { message } = this.data;
 
-    // Initiative conversation control - /initiative on|off
+    // 1. Initiative conversation control - /initiative on|off
     this.initiativeMatch = message.match(/^\/initiative(?:\s+(on|off))?$/);
     if (this.initiativeMatch) return true;
 
-    // Push twitter - /push-tweet <tweetUrl or tweetId>
+    // 2. Push twitter - /push-tweet <tweetUrl or tweetId>
     this.pushTweetMatch = message.match(/^\/push-tweet\s+(?:\S*status\/)?(\d+)$/);
     if (this.pushTweetMatch) return true;
 
+    // 3. tts - /tts <text>
+    this.ttsMatch = message.match(/^\/tts\s+(.+)$/);
+    if (this.ttsMatch) {
+      return true;
+    }
     return false;
   }
 
   async run() {
     const { group_id: groupId } = this.data;
 
-    // Initiative conversation
+    // 1. Initiative conversation
     if (this.initiativeMatch) {
       const action = this.initiativeMatch[1];
       const list = nnkbot.config.aiReply.initiativeList;
@@ -48,13 +58,44 @@ export default class GroupCommandModule extends NonokaModuleBase<GroupMessageDat
       }
     }
 
-    // Push twitter
+    // 2. Push twitter
     if (this.pushTweetMatch) {
       const [, tweetId] = this.pushTweetMatch;
       const msgArr = await createMsgFromTweetId(tweetId);
       if (!msgArr || msgArr.length === 0) return;
       for (const msg of msgArr) {
-        nnkbot.sendGroupMsg(Number(groupId), msg);
+        nnkbot.sendGroupMsg(groupId, msg);
+      }
+    }
+
+    // 3. tts
+    if (this.ttsMatch) {
+      const [, text] = this.ttsMatch;
+      const code = text.charCodeAt(0);
+      let isJp = false;
+      if (code >= 0x3040 && code <= 0x309F) {
+        // 平假名
+        isJp = true;
+      } else if (code >= 0x30A0 && code <= 0x30FF) {
+        // 片假名
+        isJp = true;
+      }
+
+      let base64: string | null;
+      if (isJp) {
+        base64 = await getTTSAudio(text);
+      } else {
+        // 非日文则翻译
+        const jpText = await translateText(text, 'jp');
+        if (!jpText) return;
+        base64 = await getTTSAudio(jpText);
+      }
+
+      if (base64) {
+        const recordCode = getRecordCode(base64);
+        nnkbot.sendGroupMsg(groupId, recordCode);
+      } else {
+        nnkbot.sendGroupMsg(groupId, '[NonokaSystem] TTS failed.');
       }
     }
   }
