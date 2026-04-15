@@ -1,12 +1,14 @@
 import { SimpleIntervalJob, Task } from 'toad-scheduler';
-import yoruStorage from '@/core/yoruStorage';
+import messageStorage from '@/modules/aiReply/storage/message';
+import { printLog } from '@/utils/print';
 
 const task = new Task('systemCleanupTask', () => {
-  // 清理qq群会话缓存
-  yoruStorage.cleanGroupChatConversations();
+  // 清理会话缓存
+  messageStorage.cleanChatConversations();
+  printLog('[systemCleanupTask] 已自动清理会话缓存。');
 });
 
-const SystemCleanupJob = new SimpleIntervalJob({ days: 1 }, task, { id: 'systemCleanup' });
+const SystemCleanupJob = new SimpleIntervalJob({ days: 3 }, task, { id: 'systemCleanup' });
 
 
 export default SystemCleanupJob;

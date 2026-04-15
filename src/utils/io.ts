@@ -69,13 +69,25 @@ export async function downloadFile(
   throw new Error('[Download] Unexpected error');
 }
 
-export function loadConfigFile(flie: string) {
+export function loadConfigFile(file: string) {
+  const filePath = path.resolve(file);
+
+  if (!fs.existsSync(filePath)) {
+    const demoPath = path.resolve('config_demo.json');
+    if (fs.existsSync(demoPath)) {
+      fs.copyFileSync(demoPath, filePath);
+      printLog(`[Config] 已从生成 ${file}，请修改配置后重新运行程序。`);
+      process.exit(0);
+    }
+    process.exit(1);
+  }
+
   try {
-    const json = fs.readFileSync(path.resolve(flie), { encoding: 'utf8' });
+    const json = fs.readFileSync(filePath, { encoding: 'utf8' });
     const config = JSON.parse(json);
     return config;
   } catch (e) {
     printError('[Load Config Error]', e);
-    process.exit();
+    process.exit(1);
   }
 }

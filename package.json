@@ -1,7 +1,7 @@
 {
-  "name": "yoruchan-ai",
-  "version": "3.1.0",
-  "description": "Is my dear Yoruchan online ? (.jpg",
+  "name": "nonoka-ai",
+  "version": "4.0.0",
+  "description": "A cute junior female student",
   "main": "index.ts",
   "scripts": {
     "dev": "tsx ./src/index.ts",
@@ -13,12 +13,13 @@
   },
   "keywords": [
     "QQ Robot",
-    "yoruchan"
+    "Nonoka"
   ],
   "author": "TakamiChika",
   "license": "GPL-3.0",
   "type": "module",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.82.0",
     "axios": "^1.6.0",
     "cheerio": "^1.0.0-rc.11",
     "form-data": "^4.0.5",
@@ -36,15 +37,15 @@
     "@types/node": "^14.17.1",
     "@types/tunnel": "^0.0.3",
     "@types/websocket": "^1.0.10",
-    "@typescript-eslint/eslint-plugin": "^6.1.0",
-    "@typescript-eslint/parser": "^6.1.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
     "cross-env": "^7.0.3",
     "eslint": "^8.4.1",
     "eslint-config-airbnb-base": "^15.0.0",
-    "eslint-config-airbnb-typescript": "^16.1.0",
+    "eslint-config-airbnb-typescript": "^18.0.0",
     "eslint-import-resolver-custom-alias": "^1.3.2",
     "eslint-plugin-import": "^2.25.3",
     "tsx": "^4.11.0",
-    "typescript": "^4.3.2"
+    "typescript": "^5.0.0"
   }
 }

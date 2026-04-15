@@ -1,30 +1,21 @@
 import { printLog } from '@/utils/print';
 import { getAtCode, getReplyCode } from '@/utils/msgCode';
 import { SimpleMessageData } from '@/types/event';
-import { YoruCore } from './yoruCore';
+import { NonokaCore } from './nnkCore';
 
-class YoruBot extends YoruCore {
-  /** 获取bot QQ号 */
-  async getLoginQQ() {
-    const res = await this.yoruWS.call('get_login_info', {});
-    if (res.retcode === 0 && res.data) {
-      return res.data.user_id as number ?? 0;
-    }
-    return 0;
-  }
-
+class NonokaBot extends NonokaCore {
   /** 处理好友请求 */
   setFriendAddRequest(flag: string | number, approve: boolean) {
-    this.yoruWS.call('set_friend_add_request', { flag: `${flag}`, approve });
+    this.nonokaWS.call('set_friend_add_request', { flag: `${flag}`, approve });
   }
 
   /** 处理拉群请求 */
   setGroupAddRequest(flag: string | number, approve: boolean) {
-    this.yoruWS.call('set_group_add_request', {
+    this.nonokaWS.call('set_group_add_request', {
       flag: `${flag}`,
       type: 'invite',
       approve,
-      reason: '该群无授权，请联系Yoru管理员',
+      reason: '没授权呢，请联系Nonoka的主人',
     });
   }
 
@@ -38,7 +29,7 @@ class YoruBot extends YoruCore {
     if (this.debugMode) {
       printLog(`[Send Private Msg] ${msg}`);
     }
-    this.yoruWS.call('send_private_msg', {
+    this.nonokaWS.call('send_private_msg', {
       user_id: userId,
       message: msg,
       auto_escape: !!plainText,
@@ -53,11 +44,11 @@ class YoruBot extends YoruCore {
    */
   async sendGroupMsg(groupId: number, msg: string, atUser?: number | string, plainText?: boolean) {
     if (msg.length === 0) return;
-    const prefix = atUser ? getAtCode(`${atUser}`) : '';
+    const prefix = atUser ? `${getAtCode(`${atUser}`)} ` : '';
     if (this.debugMode) {
       printLog(`[Send Group Msg] ${prefix}${msg}`);
     }
-    this.yoruWS.call('send_group_msg', {
+    this.nonokaWS.call('send_group_msg', {
       group_id: groupId,
       message: `${prefix}${msg}`,
       auto_escape: !!plainText,
@@ -86,11 +77,11 @@ class YoruBot extends YoruCore {
    */
   async sendGroupReplyMsg(groupId: number, msg: string, replyMsgId: number | string) {
     if (msg.length === 0) return;
-    const prefix = getReplyCode(replyMsgId);
+    const prefix = `${getReplyCode(replyMsgId)} `;
     if (this.debugMode) {
       printLog(`[Send Group Msg] ${prefix}${msg}`);
     }
-    this.yoruWS.call('send_group_msg', {
+    this.nonokaWS.call('send_group_msg', {
       group_id: groupId,
       message: prefix + msg,
     });
@@ -105,7 +96,7 @@ class YoruBot extends YoruCore {
     if (this.debugMode) {
       printLog('[Send Group Forward Msg]\n', msg);
     }
-    this.yoruWS.call('send_group_forward_msg', {
+    this.nonokaWS.call('send_group_forward_msg', {
       group_id: groupId,
       messages: msg,
     });
@@ -116,7 +107,7 @@ class YoruBot extends YoruCore {
    */
   async getMessageFromId(messageId: number | string) {
     if (!messageId) return;
-    const res = await this.yoruWS.call('get_msg', {
+    const res = await this.nonokaWS.call('get_msg', {
       message_id: messageId,
     });
     if (res.retcode === 0 && res.data) {
@@ -129,7 +120,7 @@ class YoruBot extends YoruCore {
    * @param {number} messageId 消息id
    */
   async deleteMsg(messageId: number) {
-    this.yoruWS.call('delete_msg', {
+    this.nonokaWS.call('delete_msg', {
       message_id: messageId,
     });
   }
@@ -138,7 +129,7 @@ class YoruBot extends YoruCore {
    * @param {string} file 图片缓存文件名
    */
   async getImageInfo(file: string) {
-    const res = await this.yoruWS.call('get_image', {
+    const res = await this.nonokaWS.call('get_image', {
       file,
     });
     if (res.retcode === 0 && res.data) {
@@ -148,4 +139,4 @@ class YoruBot extends YoruCore {
   }
 }
 
-export default new YoruBot();
+export default new NonokaBot();

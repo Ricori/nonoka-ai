@@ -11,31 +11,20 @@ export function randomText(textArr: string[]) {
  * @returns 有则返回true
  */
 export function hasImage(msg: string) {
-  return msg.indexOf('[CQ:image') !== -1;
-}
-
-
-/** 判断消息是否有指定搜图文本
- * @param {string} msg 消息
- * @returns 有则返回true
- */
-export function hasSerachImageText(msg: string) {
-  if (msg.includes('搜图') || msg.includes('来源')) {
-    return true;
-  }
-  return false;
+  return /\[CQ:image,[^\]]+\]/.test(msg);
 }
 
 
 /** 从消息中提取图片
- * @param {string} msg
+ * @param {string} msg cqtext
+ * @param {boolean} extra 是否提取额外信息
  * @returns 图片URL数组
  */
-export function getImgs(msg: string) {
+export function getImgs(msg: string, extra = false) {
   const cqimgs = extractCQCodes(msg).filter((cq) => cq.type === 'image');
   return cqimgs.map((cq) => {
-    const data = cq.pickData(['file', 'url']);
-    return data;
+    const data = cq.pickData(extra ? ['file', 'url', 'file_size', 'summary'] : ['file', 'url']);
+    return data as { file: string, url: string, file_size?: string, summary?: string };
   });
 }
 
@@ -82,7 +71,7 @@ export function getForwardMessageId(msg: string) {
 /** 从消息中去除@和replay文本
  * @param {string} msg
  */
-export function deleteAtFromMsg(msg: string) {
+export function cleanAt(msg: string) {
   const reg = /\[CQ:at,qq=([^,]+)\]/g;
   const reg2 = /\[CQ:reply,id=([^,]+)\]/;
   return msg.replace(reg, '').replace(reg2, '').trimStart();
@@ -92,16 +81,24 @@ export function deleteAtFromMsg(msg: string) {
 /** 去除首尾指定字符
  */
 export function trimChar(str: string | null, char: string) {
-  if (!str) return undefined;
-  let newStr;
-  if (str.charAt(0) === char) {
-    newStr = str.substring(1);
-  }
-  if (str.charAt(str.length - 1) === char) {
-    newStr = str.substring(0, str.length - 1);
-  }
-  return newStr;
+  if (!str) return '';
+  // 转义特殊字符
+  const escapedChar = char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const reg = new RegExp(`^${escapedChar}+|${escapedChar}+$`, 'g');
+  return str.replace(reg, '');
 }
 
 /** sleep */
-export const sleep = (ms: number) => new Promise((resolve) => { setTimeout(resolve, ms); });
+export function sleep(ms: number) { return new Promise((resolve) => { setTimeout(resolve, ms); }); }
+
+/**
+ * 根据字数计算人类打字时间
+ * @param text 要发送的文本
+ * @returns 延迟毫秒数
+ */
+export function calculateTypingDelay(text: string): number {
+  const baseDelay = 500; // 基础延迟
+  const timePerChar = 120; // 假设人类每打一个字需要 120ms
+  const jitter = Math.floor(Math.random() * 600) - 300; // 随机波动
+  return Math.max(baseDelay + (text.length * timePerChar) + jitter, 500);
+}

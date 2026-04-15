@@ -1,6 +1,6 @@
 import { SimpleIntervalJob, AsyncTask } from 'toad-scheduler';
-import yorubot from '@/core/yoruBot';
-import yoruStorage from '@/core/yoruStorage';
+import nnkbot from '@/core/nnkBot';
+import nnkStorage from '@/core/nnkStorage';
 import { printLog } from '@/utils/print';
 import { getImgCode, getVideoCode } from '@/utils/msgCode';
 import { getLatestTweet, getTweetPost } from '@/service/twitter/tweet';
@@ -47,20 +47,20 @@ async function checkLastestTweet(
   try {
     const latestTweet = await getLatestTweet(username);
     if (!latestTweet || !latestTweet.time) return;
-    const preTime = yoruStorage.getTwitterLastestTweetTime(username);
+    const preTime = nnkStorage.getTwitterLastestTweetTime(username);
     const newTime = latestTweet.time;
 
     // 有新推特
     if (newTime > preTime) {
       // 设置最新推特时间
-      yoruStorage.setTwitterLastestTweetTime(username, newTime);
+      nnkStorage.setTwitterLastestTweetTime(username, newTime);
 
       const msgArr = await createMsgFromTweetId(latestTweet.tweetId);
       if (!msgArr || msgArr.length === 0) return;
 
       groupIds.forEach((groupId) => {
         for (const msg of msgArr) {
-          yorubot.sendGroupMsg(groupId, msg);
+          nnkbot.sendGroupMsg(groupId, msg);
         }
       });
     }
@@ -71,9 +71,9 @@ async function checkLastestTweet(
 
 
 const task = new AsyncTask('twitterTask', async () => {
-  const botIsConnect = yorubot.getIsBotConnecting();
-  const config = yorubot.config.tweetPush;
-  if (!config.enable || !yorubot.config.yoruService.apiKey) return;
+  const botIsConnect = nnkbot.getIsBotConnecting();
+  const config = nnkbot.config.tweetPush;
+  if (!config.enable || !nnkbot.config.nonokaService.apiKey) return;
   if (botIsConnect) {
     Object.keys(config.config).forEach((username: string, i: number) => {
       if (Array.isArray(config.config[username])) {
@@ -87,11 +87,11 @@ const task = new AsyncTask('twitterTask', async () => {
 });
 
 
-const TwitterPushJob = new SimpleIntervalJob({ seconds: 180 }, task, { id: 'twitterPush' });
+const TwitterPushJob = new SimpleIntervalJob({ seconds: 200 }, task, { id: 'twitterPush' });
 
 // 启动bot时将用户推文最新时间设置为现在，防止立即推送
-Object.keys(yorubot.config.tweetPush.config).forEach((username: string) => {
-  yoruStorage.setTwitterLastestTweetTime(username, new Date().getTime());
+Object.keys(nnkbot.config.tweetPush.config).forEach((username: string) => {
+  nnkStorage.setTwitterLastestTweetTime(username, new Date().getTime());
 });
 
 

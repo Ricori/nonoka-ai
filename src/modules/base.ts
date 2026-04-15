@@ -1,7 +1,7 @@
 import { MessageType } from '@/types/event';
 
 
-export default class YoruModuleBase<T extends MessageType> {
+export default class NonokaModuleBase<T extends MessageType> {
   /** 模块唯一名称 */
   static NAME = '';
 

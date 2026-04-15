@@ -1,14 +1,14 @@
 import { GroupMessageData } from '@/types/event';
-import YoruModuleBase from '@/modules/base';
-import yorubot from '@/core/yoruBot';
+import NonokaModuleBase from '@/modules/base';
+import nnkbot from '@/core/nnkBot';
 import { extractCQCodes } from '@/utils/msgCode';
 import { printError, printLog } from '@/utils/print';
-import { getJobProgress, initGithubConfig, startTransfer } from '@/utils/githubTransfer';
 import { sleep } from '@/utils/function';
+import { getJobProgress, initGithubConfig, startTransfer } from './transfer';
 
 initGithubConfig();
 
-export default class ykhrOnedriveModule extends YoruModuleBase<GroupMessageData> {
+export default class YkhrOnedriveModule extends NonokaModuleBase<GroupMessageData> {
   static NAME = 'YkhrOnedriveModule';
 
   async checkConditions() {
@@ -39,11 +39,11 @@ export default class ykhrOnedriveModule extends YoruModuleBase<GroupMessageData>
       const url = fileObj.data.get('url') as string;
 
       if (fileSize && (Number(fileSize) > 1024 * 1024 * 1024)) {
-        yorubot.sendGroupMsg(groupId, `文件 ${file}(${(Number(fileSize) / (1024 * 1024)).toFixed(2)} MB) 过大，无法处理`, userId);
+        nnkbot.sendGroupMsg(groupId, `文件“${file}”(${(Number(fileSize) / (1024 * 1024)).toFixed(2)} MB) 过大，无法处理`, userId);
         return;
       }
 
-      yorubot.sendGroupMsg(groupId, `开始处理 ${file} (${(Number(fileSize) / (1024 * 1024)).toFixed(2)} MB)...`, userId);
+      nnkbot.sendGroupMsg(groupId, `开始处理“${file}”(${(Number(fileSize) / (1024 * 1024)).toFixed(2)} MB)...`, userId);
 
       const parentPath = file.includes('待轴') ? '/剪辑' : '/全熟已压';
       const inputs = {
@@ -54,7 +54,7 @@ export default class ykhrOnedriveModule extends YoruModuleBase<GroupMessageData>
 
       const runId = await startTransfer(inputs);
       if (!runId) {
-        yorubot.sendGroupMsg(groupId, `${file} 上传 OneDrive 任务创建失败，请联系管理员。`, userId);
+        nnkbot.sendGroupMsg(groupId, `“${file}”上传 OneDrive 任务创建失败，请联系管理员。`, userId);
         return;
       }
 
@@ -69,6 +69,7 @@ export default class ykhrOnedriveModule extends YoruModuleBase<GroupMessageData>
           case 'completed':
             isCompleted = true;
             if (progress.conclusion === 'success') {
+              printLog(`[Github Transfer][${file}] Task successful.`);
               isSuccess = true;
             } else {
               isSuccess = false;
@@ -76,7 +77,7 @@ export default class ykhrOnedriveModule extends YoruModuleBase<GroupMessageData>
             }
             break;
           case 'in_progress':
-            printLog(`[Github Transfer][${file}] Current execution progress: [${progress.stepName}] (Time elapsed ${retryCount * 20} seconds)...`);
+            printLog(`[Github Transfer][${file}] Current execution progress: [${progress.stepName}] (Time elapsed ${retryCount * 30} seconds)...`);
             break;
           case 'queued':
             printLog(`[Github Transfer][${file}] Current status: GitHub is queuing to allocate servers...`);
@@ -87,20 +88,20 @@ export default class ykhrOnedriveModule extends YoruModuleBase<GroupMessageData>
         }
         if (!isCompleted) {
           retryCount++;
-          await sleep(20000);
+          await sleep(30000);
         }
       }
 
       if (!isCompleted) {
         printError(`[Github Transfer][${file}] Task timeout.`);
-        yorubot.sendGroupMsg(groupId, `${file} 任务超时，请联系管理员。`, userId);
+        nnkbot.sendGroupMsg(groupId, `“${file}”任务超时，请联系管理员。`, userId);
       }
       if (!isSuccess) {
         printError(`[Github Transfer][${file}] Task failed.`);
-        yorubot.sendGroupMsg(groupId, `上传 ${file} 到 OneDrive 失败，请联系管理员。`, userId);
+        nnkbot.sendGroupMsg(groupId, `上传 “${file}”到 OneDrive 失败，请联系管理员。`, userId);
       }
 
-      yorubot.sendGroupMsg(groupId, `${file} 已成功上传至 OneDrive ${parentPath}目录。`, userId);
+      nnkbot.sendGroupMsg(groupId, `“${file}”已成功上传至 OneDrive${parentPath} 目录。`, userId);
     }
   }
 }

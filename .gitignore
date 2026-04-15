@@ -1,8 +1,17 @@
 # Myself
 build
 
-# Debug
-config_debug.json
+# Data
+data/picture
+data/memory
+
+# Config
+config.json
+config_github.json
+
+# Test
+test/*
+!test/index.ts
 
 # Logs
 logs
@@ -22,6 +31,3 @@ node_modules/
 
 # Yarn Integrity file
 .yarn-integrity
-
-# Github config
-config_github.json

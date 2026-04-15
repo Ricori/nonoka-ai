@@ -1,12 +1,19 @@
 import { GroupMessageData, PrivateMessageData } from '@/types/event';
-import yorubot from '@/core/yoruBot';
+import nnkbot from '@/core/nnkBot';
 import {
-  hasImage, hasReply, getReplyMsgId, getImgs, hasSerachImageText,
+  hasImage, hasReply, getReplyMsgId, getImgs,
 } from '@/utils/function';
 import searchImage from '@/service/searchImg';
-import YoruModuleBase from '../base';
+import NonokaModuleBase from '../base';
 
-export default class ImageSearchModule extends YoruModuleBase<PrivateMessageData | GroupMessageData> {
+function hasSerachImageText(msg: string) {
+  if (msg.includes('搜图') || msg.includes('来源')) {
+    return true;
+  }
+  return false;
+}
+
+export default class ImageSearchModule extends NonokaModuleBase<PrivateMessageData | GroupMessageData> {
   static NAME = 'ImageSearchModule';
 
   tempMessage = '';
@@ -16,7 +23,7 @@ export default class ImageSearchModule extends YoruModuleBase<PrivateMessageData
     if (hasReply(message)) {
       // If it is a reply message, extract the original message
       const replyMsgId = getReplyMsgId(message);
-      const replyMsgData = await yorubot.getMessageFromId(replyMsgId);
+      const replyMsgData = await nnkbot.getMessageFromId(replyMsgId);
       if (replyMsgData) {
         const rMsg = replyMsgData.message;
         // The image search logic is executed only when both the message contains an image
@@ -42,9 +49,9 @@ export default class ImageSearchModule extends YoruModuleBase<PrivateMessageData
     const resultMsgs = await searchImage(urls);
 
     if (groupId) {
-      resultMsgs.forEach((msg) => yorubot.sendGroupMsg(groupId, msg));
+      resultMsgs.forEach((msg) => nnkbot.sendGroupMsg(groupId, msg));
     } else {
-      resultMsgs.forEach((msg) => yorubot.sendPrivateMsg(userId, msg));
+      resultMsgs.forEach((msg) => nnkbot.sendPrivateMsg(userId, msg));
     }
   }
 }

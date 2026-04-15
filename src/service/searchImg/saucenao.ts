@@ -135,7 +135,7 @@ export default async function saucenaoSearch(imgURL: string) {
   } else if (source) {
     displayTitle = source;
   } else {
-    displayTitle = isAnime ? '[AniDB]' : '[YoruDB]';
+    displayTitle = isAnime ? '[AniDB]' : '[NnkDB]';
   }
 
   // 生成消息文本

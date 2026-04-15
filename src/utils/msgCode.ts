@@ -102,9 +102,9 @@ export function getReplyCode(msgId: number | string) {
   return getMessageCode('reply', { id: `${msgId}` });
 }
 
-export function getImgCode(file: string, type?: 'flash' | 'show') {
-  if (type) {
-    return getMessageCode('image', { file, type });
+export function getImgCode(file: string, isSticker = false) {
+  if (isSticker) {
+    return getMessageCode('image', { file, summary: '[动画表情]', sub_type: 1 });
   }
   return getMessageCode('image', { file });
 }
@@ -114,7 +114,7 @@ export function getBigImgCode(file: string, isBase64 = false) {
     file: isBase64 ? `base64://${file}` : file,
     maxwidth: 800,
     maxheight: 1600,
-    source: '夜夜酱',
+    source: 'ののかちゃん',
   });
 }
 
@@ -132,4 +132,8 @@ export function getShareCode_UNSAFE(url: string, title: string, content?: string
     content,
     image,
   });
+}
+
+export function getRecordCode(file: string) {
+  return getMessageCode('record', { file });
 }

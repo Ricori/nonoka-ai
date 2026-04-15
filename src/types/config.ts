@@ -10,8 +10,8 @@ export interface BotConfig {
   admin: number[];
   /** 是否同意自动添加好友 */
   autoAddFriend: boolean;
-  /** yoru API服务 */
-  yoruService: {
+  /** nonoka API服务 */
+  nonokaService: {
     /** API服务地址 */
     baseUrl: string;
     /** API服务密钥 */
@@ -21,8 +21,6 @@ export interface BotConfig {
   repeater: {
     /** 打开复读机 */
     enable: boolean;
-    /** 几次重复后复读 */
-    times: number;
   },
   /** B站动态推送 */
   biliDynamicPush: {
@@ -48,8 +46,14 @@ export interface BotConfig {
     baseUrl: string;
     /** 大模型平台 key */
     apiKey: string;
-    /** 黑名单，黑名单内的群不会触发自动回复 */
+    /** Anthropic baseURL */
+    authropicBaseUrl: string;
+    /** Anthropic key */
+    authropicKey: string;
+    /** 黑名单，黑名单内的群不会触发任何回复 */
     blackList: number[];
+    /** 主动发起对话的群名单 */
+    initiativeList: number[];
   },
   /** 瑟图功能 */
   hPic: {
@@ -62,7 +66,7 @@ export interface BotConfig {
   },
 }
 
-export interface YoruConfig {
+export interface NonokaConfig {
   wsConfig: WSConfig;
   botConfig: BotConfig;
 }

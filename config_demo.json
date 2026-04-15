@@ -8,13 +8,12 @@
       515302066
     ],
     "autoAddFriend": false,
-    "yoruService": {
+    "nonokaService": {
       "baseUrl": "",
       "apiKey": ""
     },
     "repeater": {
-      "enable": true,
-      "times": 3
+      "enable": true
     },
     "biliDynamicPush": {
       "enable": true,
@@ -35,7 +34,10 @@
       "enable": true,
       "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
       "apiKey": "",
-      "blackList": []
+      "authropicBaseUrl": "",
+      "authropicKey": "",
+      "blackList": [],
+      "initiativeList": []
     },
     "hPic": {
       "enable": false,
