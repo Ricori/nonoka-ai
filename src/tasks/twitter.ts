@@ -1,10 +1,11 @@
 import { SimpleIntervalJob, AsyncTask } from 'toad-scheduler';
 import nnkbot from '@/core/nnkBot';
 import nnkStorage from '@/core/nnkStorage';
-import { printLog } from '@/utils/print';
+import { printError, printLog } from '@/utils/print';
 import { getImgCode, getVideoCode } from '@/utils/msgCode';
 import { getLatestTweet, getTweetPost } from '@/service/twitter/tweet';
 import { createScreenshot } from '@/service/twitter/screenshot';
+import nnkSchedule from '@/core/nnkSchedule';
 
 export async function createMsgFromTweetId(tweetId: string) {
   // 获取详细信息
@@ -41,12 +42,28 @@ export async function createMsgFromTweetId(tweetId: string) {
   return [textMsg];
 }
 
+// 错误次数
+let consecutiveFailCount = 0;
+
 async function checkLastestTweet(
   { username, groupIds }: { username: string, groupIds: number[] },
 ) {
   try {
     const latestTweet = await getLatestTweet(username);
-    if (!latestTweet || !latestTweet.time) return;
+    if (!latestTweet || !latestTweet.time) {
+      consecutiveFailCount++;
+      if (consecutiveFailCount % 5 === 0) {
+        printError(`[GetLatestTweet Warn] All attempts failed x${consecutiveFailCount}.`);
+        nnkbot.sendPrivateMsg(nnkbot.config.admin[0], `GetLatestTweet All attempts failed x${consecutiveFailCount}.`);
+      }
+      if (consecutiveFailCount === 40) {
+        // 错误40次，停止任务
+        nnkSchedule.stopById('twitterPush');
+        nnkbot.sendPrivateMsg(nnkbot.config.admin[0], 'Failed 40x. Stop twitter push task.');
+      }
+      return;
+    }
+
     const preTime = nnkStorage.getTwitterLastestTweetTime(username);
     const newTime = latestTweet.time;
 

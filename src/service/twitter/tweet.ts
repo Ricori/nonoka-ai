@@ -25,7 +25,6 @@ function getTimestampFromTweetId(id: string) {
   return parseInt(temp, 2) + 1288834974657;
 }
 
-let consecutiveFailCount = 0;
 
 export async function getLatestTweet(username: string) {
   const nnkServiceConfig = nnkbot.config.nonokaService;
@@ -48,14 +47,8 @@ export async function getLatestTweet(username: string) {
         };
       }
       return undefined;
-    } catch (e: any) {
-      const errorMsg = `[GetLatestTweet Warn] ${e.message}`;
+    } catch (e) {
       if (i === 1) {
-        consecutiveFailCount++;
-        if (consecutiveFailCount % 5 === 0) {
-          printError(`${errorMsg} - All attempts failed x${consecutiveFailCount}.`);
-          nnkbot.sendPrivateMsg(nnkbot.config.admin[0], `GetLatestTweet All attempts failed x${consecutiveFailCount}. reason: ${e.message}`);
-        }
         return undefined;
       }
       await new Promise((resolve) => {
