@@ -55,7 +55,7 @@ async function processReplyQueue(groupId: number, isInitiativeReply = false) {
       const aiReplyMessageParam = formatAssistantMessage(aiReplyText);
       messageStorage.addGroupChatConversations(groupId, aiReplyMessageParam);
 
-      if (Math.random() < 0.55) {
+      if (Math.random() < 0.3) {
         // 语音发送
         const message = aiReplyText.replace(/\[表情:\s*(.*?)\]/g, '').replace('||', '').trim();
         if (message) {
