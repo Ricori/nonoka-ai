@@ -32,7 +32,7 @@ export async function getLatestTweet(username: string) {
 
   for (let i = 0; i < 2; i++) {
     try {
-      const ret = await Axios.get(nnkURL, { timeout: 15000 });
+      const ret = await Axios.get(nnkURL, { timeout: 25000 });
       if (ret?.data?.success === false) {
         throw new Error('[NonokaService] getLatestTweet API Error.');
       }
