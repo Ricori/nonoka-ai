@@ -104,7 +104,7 @@ const task = new AsyncTask('twitterTask', async () => {
 });
 
 
-const TwitterPushJob = new SimpleIntervalJob({ seconds: 200 }, task, { id: 'twitterPush' });
+const TwitterPushJob = new SimpleIntervalJob({ seconds: 240 }, task, { id: 'twitterPush' });
 
 // 启动bot时将用户推文最新时间设置为现在，防止立即推送
 Object.keys(nnkbot.config.tweetPush.config).forEach((username: string) => {
