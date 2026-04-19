@@ -119,7 +119,7 @@ export async function summarizeUserTraits(
   const prompt = getSummarizePrompt(nickName, messages, existingTraits);
 
   const response = await client.chat.completions.create({
-    model: 'qwen-turbo-1101',
+    model: 'MiniMax-M2.5',
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.3,
     max_tokens: 120,
@@ -138,7 +138,7 @@ export async function summarizeUserTraits(
 /** 调用LLM翻译 */
 export async function translateText(text: string, lang = 'cn') {
   const ret = await Axios.post(`${nnkbot.config.aiReply.baseUrl}/chat/completions`, {
-    model: 'deepseek-v3.2-exp',
+    model: 'MiniMax-M2.5',
     messages: [
       { role: 'user', content: (lang === 'cn' ? TRANSLATE_TO_CN_PROMPT : TRANSLATE_TO_JP_PROMPT) + text },
     ],
