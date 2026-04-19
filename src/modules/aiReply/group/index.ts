@@ -142,7 +142,7 @@ export default class GroupAIReplyModule extends NonokaModuleBase<GroupMessageDat
     //  -------- 固定回复逻辑 --------
     // 1. 匹配"要不要xxx"时随机回复"要"或"不要"
     if (/要不要/.test(formattedMessage.message)) {
-      const reply = Math.random() < 0.5 ? '乃乃香建议你 要！' : '乃乃香建议你 不要！';
+      const reply = (Math.random() < 0.5) ? '乃乃香建议你 要！' : '乃乃香建议你 不要！';
       nnkbot.sendGroupMsg(groupId, reply);
       return;
     }
