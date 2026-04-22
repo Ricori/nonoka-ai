@@ -56,13 +56,15 @@ async function checkLastestTweet(
         printError(`[GetLatestTweet Warn] All attempts failed x${consecutiveFailCount}.`);
         nnkbot.sendPrivateMsg(nnkbot.config.admin[0], `GetLatestTweet All attempts failed x${consecutiveFailCount}.`);
       }
-      if (consecutiveFailCount === 40) {
-        // 错误40次，停止任务
+      if (consecutiveFailCount === 20) {
+        // 连续错误20次，停止任务
         nnkSchedule.stopById('twitterPush');
         nnkbot.sendPrivateMsg(nnkbot.config.admin[0], 'Failed 40x. Stop twitter push task.');
       }
       return;
     }
+
+    consecutiveFailCount = 0;
 
     const preTime = nnkStorage.getTwitterLastestTweetTime(username);
     const newTime = latestTweet.time;
