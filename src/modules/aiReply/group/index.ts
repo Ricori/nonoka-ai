@@ -55,6 +55,7 @@ async function processReplyQueue(groupId: number, isInitiativeReply = false) {
       const aiReplyMessageParam = formatAssistantMessage(aiReplyText);
       messageStorage.addGroupChatConversations(groupId, aiReplyMessageParam);
 
+      /* 语音回复
       if (Math.random() < 0.2) {
         // 语音发送
         const message = aiReplyText.replace(/\[表情:\s*(.*?)\]/g, '').replace('||', '').trim();
@@ -68,21 +69,22 @@ async function processReplyQueue(groupId: number, isInitiativeReply = false) {
             nnkbot.sendGroupMsg(groupId, recordCode);
           }
         }
-      } else {
-        // 回复消息处理
-        const messages = processStickerTag(aiReplyText)
-          .split('||')
-          .map((msg) => msg.trim())
-          .filter((msg) => msg.length > 0);
-        // 分段文字发送
-        for (let i = 0; i < messages.length; i++) {
-          const msg = messages[i].trim();
-          if (i > 0) {
-            const delay = calculateTypingDelay(msg);
-            await sleep(delay);
-          }
-          nnkbot.sendGroupMsg(groupId, msg);
+      }
+      */
+
+      // 回复消息处理
+      const messages = processStickerTag(aiReplyText)
+        .split('||')
+        .map((msg) => msg.trim())
+        .filter((msg) => msg.length > 0);
+      // 分段文字发送
+      for (let i = 0; i < messages.length; i++) {
+        const msg = messages[i].trim();
+        if (i > 0) {
+          const delay = calculateTypingDelay(msg);
+          await sleep(delay);
         }
+        nnkbot.sendGroupMsg(groupId, msg);
       }
     }
   } finally {
