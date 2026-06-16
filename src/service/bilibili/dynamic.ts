@@ -37,7 +37,7 @@ export default async function getBiliDynamic(uid: string, myBiliCookie: string) 
       host_uid: uid,
     },
     headers: {
-      cookie: myBiliCookie
+      cookie: myBiliCookie,
     },
   }).catch((err) => {
     printLog(`[Service Error] GetBiliDynamic API Error: ${err.message}`);

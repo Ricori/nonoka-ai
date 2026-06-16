@@ -48,7 +48,7 @@ nnkbot.loadModule('group', [
 // 加载定时任务
 nnkSchedule.loadJob([
   SystemCleanupJob,
-  BilibiliNewSharedJob,
+  // BilibiliNewSharedJob,
   TwitterPushJob,
 ]);
 
