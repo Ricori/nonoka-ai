@@ -39,8 +39,8 @@ export default class AdminModule extends NonokaModuleBase<PrivateMessageData> {
       return true;
     }
 
-    // 3. push twitter - /push-tweet <groupId> <tweetUrl or tweetId>
-    this.pushTweetMatch = message.match(/^\/push-tweet\s+(\d+).*(?:status\/|\s+)(\d+)$/);
+    // 3. push twitter - /p <groupId> <tweetUrl or tweetId>
+    this.pushTweetMatch = message.match(/^\/p\s+(\d+).*(?:status\/|\s+)(\d+)$/);
     if (this.pushTweetMatch) {
       return true;
     }
@@ -70,10 +70,10 @@ export default class AdminModule extends NonokaModuleBase<PrivateMessageData> {
         '  taskName: twitter | bilibili',
         '  示例: /task twitter on',
         '',
-        '/push-tweet <groupId> <tweetUrl|tweetId>',
+        '/p <groupId> <tweetUrl|tweetId>',
         '  推送推文到指定群组',
-        '  示例: /push-tweet 123456 https://twitter.com/user/status/123456',
-        '  示例: /push-tweet 123456 123456',
+        '  示例: /p 123456 https://twitter.com/user/status/123456',
+        '  示例: /p 123456 123456',
         '',
         '/tts <text>',
         '  文字转语音',
