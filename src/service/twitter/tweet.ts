@@ -66,6 +66,10 @@ export async function getTweetPost(tweetId: string, translate = true) {
     return null;
   });
   if (ret2?.data) {
+    if (typeof ret2.data === 'string') {
+      printError('[Vxtwitter Error] API Error.');
+      return undefined;
+    }
     const post = await resolveData(ret2.data, translate);
     return post;
   }
