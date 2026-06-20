@@ -38,7 +38,7 @@ export async function getAnthropicLLMReply(formattedMessage: FormattedMessage[])
   }));
 
   const response = await client.messages.create({
-    model: 'claude-opus-4-7',
+    model: 'claude-opus-4-8',
     system: SYSTEM_PROMPT + SECURITY_PROMPT,
     messages,
     temperature: 0.8,
