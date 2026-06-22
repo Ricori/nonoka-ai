@@ -38,7 +38,7 @@ export async function getAnthropicLLMReply(formattedMessage: FormattedMessage[])
   }));
 
   const response = await client.messages.create({
-    model: 'claude-opus-4-8',
+    model: 'claude-opus-4-7',
     system: SYSTEM_PROMPT + SECURITY_PROMPT,
     messages,
     temperature: 0.8,
@@ -49,7 +49,7 @@ export async function getAnthropicLLMReply(formattedMessage: FormattedMessage[])
 
   const text = response?.content?.[0]?.text as string | undefined;
   if (text) {
-    if (text.includes('kiro') || text.includes('Kiro')) {
+    if (text.includes('kiro') || text.includes('Kiro') || text.includes('Claude')) {
       return null;
     }
     return text as string;
