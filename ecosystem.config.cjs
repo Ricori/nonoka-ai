@@ -25,5 +25,17 @@ module.exports = {
       error_file: path.join(__dirname, 'logs/error.log'),
       merge_logs: true,
     },
+    {
+      // 日志网页服务：tail 上面的日志文件，用浏览器实时查看
+      name: 'nonoka-log',
+      script: path.join(__dirname, 'scripts/log-server.cjs'),
+      cwd: __dirname,
+      autorestart: true,
+      env: {
+        LOG_PORT: 9615,
+        LOG_HOST: '0.0.0.0',
+        LOG_TOKEN: 'nonoka233',
+      },
+    },
   ],
 };
