@@ -22,8 +22,8 @@ export default class GroupCommandModule extends NonokaModuleBase<GroupMessageDat
     this.initiativeMatch = message.match(/^\/initiative(?:\s+(on|off))?$/);
     if (this.initiativeMatch) return true;
 
-    // 2. Push twitter - /push-tweet <tweetUrl or tweetId>
-    this.pushTweetMatch = message.match(/^\/push-tweet\s+(?:\S*status\/)?(\d+)$/);
+    // 2. Push twitter - /p <tweetUrl or tweetId>
+    this.pushTweetMatch = message.match(/^\/p\s+(?:\S*status\/)?(\d+)$/);
     if (this.pushTweetMatch) return true;
 
     // 3. tts - /tts <text>

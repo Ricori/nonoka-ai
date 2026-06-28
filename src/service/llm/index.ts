@@ -9,6 +9,7 @@ import {
   TRANSLATE_TO_JP_PROMPT,
 } from './prompt';
 import { getAnthropicLLMReply } from './authropic';
+import { LLM_MODELS, LLM_PARAMS } from './config';
 
 const client = new OpenAI({
   apiKey: nnkbot.config.aiReply.apiKey,
@@ -20,7 +21,7 @@ export async function getLLMReply(formattedMessage: FormattedMessage[]): Promise
     // 配置了 Authropic key,就用 claude 模型
     const anthropicRes = await getAnthropicLLMReply(formattedMessage);
     if (anthropicRes) {
-      // 有数据就 return，不行就走下面 kimi2.5模型
+      // 有数据就 return，不行就走下面 kimi2.6模型
       return anthropicRes;
     }
   }
@@ -73,12 +74,12 @@ export async function getLLMReply(formattedMessage: FormattedMessage[]): Promise
 
   let response = await client.chat.completions.create(
     {
-      model: 'kimi-k2.5',
+      model: LLM_MODELS.reply,
       messages: messagesToAPI,
-      temperature: 0.8,
-      max_tokens: 150,
+      temperature: LLM_PARAMS.reply.temperature,
+      max_tokens: LLM_PARAMS.reply.maxTokens,
     },
-    { timeout: 20000 },
+    { timeout: LLM_PARAMS.reply.timeout },
   ).catch((e) => { printError(`[AiReply Error][Kimi] ${e}`); return null; });
 
   if (!response?.choices?.[0]?.message?.content) {
@@ -93,12 +94,12 @@ export async function getLLMReply(formattedMessage: FormattedMessage[]): Promise
     });
     response = await client.chat.completions.create(
       {
-        model: 'kimi-k2.5',
+        model: LLM_MODELS.reply,
         messages: messagesNoImg,
-        temperature: 0.8,
-        max_tokens: 150,
+        temperature: LLM_PARAMS.reply.temperature,
+        max_tokens: LLM_PARAMS.reply.maxTokens,
       },
-      { timeout: 20000 },
+      { timeout: LLM_PARAMS.reply.timeout },
     ).catch((e) => { printError(`[AiReply Error][Kimi Retry] ${e}`); return null; });
   }
 
@@ -119,11 +120,11 @@ export async function summarizeUserTraits(
   const prompt = getSummarizePrompt(nickName, messages, existingTraits);
 
   const response = await client.chat.completions.create({
-    model: 'qwen-turbo-1101',
+    model: LLM_MODELS.summarize,
     messages: [{ role: 'user', content: prompt }],
-    temperature: 0.3,
-    max_tokens: 120,
-  }, { timeout: 15000 }).catch((e) => { printError(`[AiReply Summarize Error] ${e}`); return null; });
+    temperature: LLM_PARAMS.summarize.temperature,
+    max_tokens: LLM_PARAMS.summarize.maxTokens,
+  }, { timeout: LLM_PARAMS.summarize.timeout }).catch((e) => { printError(`[AiReply Summarize Error] ${e}`); return null; });
 
   const content = response?.choices?.[0]?.message?.content ?? '';
 
@@ -138,7 +139,7 @@ export async function summarizeUserTraits(
 /** 调用LLM翻译 */
 export async function translateText(text: string, lang = 'cn') {
   const ret = await Axios.post(`${nnkbot.config.aiReply.baseUrl}/chat/completions`, {
-    model: 'deepseek-v3.2-exp',
+    model: LLM_MODELS.translate,
     messages: [
       { role: 'user', content: (lang === 'cn' ? TRANSLATE_TO_CN_PROMPT : TRANSLATE_TO_JP_PROMPT) + text },
     ],

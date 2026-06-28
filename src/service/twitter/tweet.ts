@@ -25,7 +25,6 @@ function getTimestampFromTweetId(id: string) {
   return parseInt(temp, 2) + 1288834974657;
 }
 
-let consecutiveFailCount = 0;
 
 export async function getLatestTweet(username: string) {
   const nnkServiceConfig = nnkbot.config.nonokaService;
@@ -33,7 +32,7 @@ export async function getLatestTweet(username: string) {
 
   for (let i = 0; i < 2; i++) {
     try {
-      const ret = await Axios.get(nnkURL, { timeout: 15000 });
+      const ret = await Axios.get(nnkURL, { timeout: 25000 });
       if (ret?.data?.success === false) {
         throw new Error('[NonokaService] getLatestTweet API Error.');
       }
@@ -48,14 +47,8 @@ export async function getLatestTweet(username: string) {
         };
       }
       return undefined;
-    } catch (e: any) {
-      const errorMsg = `[GetLatestTweet Warn] ${e.message}`;
+    } catch (e) {
       if (i === 1) {
-        consecutiveFailCount++;
-        if (consecutiveFailCount % 5 === 0) {
-          printError(`${errorMsg} - All attempts failed x${consecutiveFailCount}.`);
-          nnkbot.sendPrivateMsg(nnkbot.config.admin[0], `GetLatestTweet All attempts failed x${consecutiveFailCount}. reason: ${e.message}`);
-        }
         return undefined;
       }
       await new Promise((resolve) => {
@@ -73,6 +66,10 @@ export async function getTweetPost(tweetId: string, translate = true) {
     return null;
   });
   if (ret2?.data) {
+    if (typeof ret2.data === 'string') {
+      printError('[Vxtwitter Error] API Error.');
+      return undefined;
+    }
     const post = await resolveData(ret2.data, translate);
     return post;
   }

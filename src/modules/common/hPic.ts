@@ -51,17 +51,16 @@ export default class HPicModule extends NonokaModuleBase<PrivateMessageData | Gr
     count = count > 10 ? 10 : count;
 
     // Get image urls
-    const nnkServiceConfig = nnkbot.config.nonokaService;
-    const nnkURL = `${nnkServiceConfig.baseUrl}/hpic/get?apikey=${nnkServiceConfig.apiKey}&level=${level}&count=${count}`;
-    const ret = await Axios.get(nnkURL, { timeout: 15000 });
+    const API_URI = 'https://api.lolicon.app/setu/?apikey=170792005f99b428151719';
+    const ret = await Axios.get(`${API_URI}&r18=${level}&num=${count}&excludeAI=true`);
 
-    const imgUrls = ret.data?.list;
-
-    if (ret?.data?.success === false || imgUrls.length === 0) {
-      printError('[NonokaService] getHpic API Error.');
+    if (ret.data?.code !== 0 || !ret.data?.data?.length) {
+      printError('[GetHpic API] getHpic API Error.');
       nnkbot.sendMsg(groupId, userId, '色图库炸了！');
       return;
     }
+
+    const imgUrls = ret.data.data.map((item: any) => item.url);
 
     // Send images
     for (const url of imgUrls) {

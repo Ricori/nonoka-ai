@@ -55,7 +55,8 @@ async function processReplyQueue(groupId: number, isInitiativeReply = false) {
       const aiReplyMessageParam = formatAssistantMessage(aiReplyText);
       messageStorage.addGroupChatConversations(groupId, aiReplyMessageParam);
 
-      if (Math.random() < 0.55) {
+      /* 语音回复
+      if (Math.random() < 0.2) {
         // 语音发送
         const message = aiReplyText.replace(/\[表情:\s*(.*?)\]/g, '').replace('||', '').trim();
         if (message) {
@@ -68,21 +69,22 @@ async function processReplyQueue(groupId: number, isInitiativeReply = false) {
             nnkbot.sendGroupMsg(groupId, recordCode);
           }
         }
-      } else {
-        // 回复消息处理
-        const messages = processStickerTag(aiReplyText)
-          .split('||')
-          .map((msg) => msg.trim())
-          .filter((msg) => msg.length > 0);
-        // 分段文字发送
-        for (let i = 0; i < messages.length; i++) {
-          const msg = messages[i].trim();
-          if (i > 0) {
-            const delay = calculateTypingDelay(msg);
-            await sleep(delay);
-          }
-          nnkbot.sendGroupMsg(groupId, msg);
+      }
+      */
+
+      // 回复消息处理
+      const messages = processStickerTag(aiReplyText)
+        .split('||')
+        .map((msg) => msg.trim())
+        .filter((msg) => msg.length > 0);
+      // 分段文字发送
+      for (let i = 0; i < messages.length; i++) {
+        const msg = messages[i].trim();
+        if (i > 0) {
+          const delay = calculateTypingDelay(msg);
+          await sleep(delay);
         }
+        nnkbot.sendGroupMsg(groupId, msg);
       }
     }
   } finally {
@@ -142,7 +144,7 @@ export default class GroupAIReplyModule extends NonokaModuleBase<GroupMessageDat
     //  -------- 固定回复逻辑 --------
     // 1. 匹配"要不要xxx"时随机回复"要"或"不要"
     if (/要不要/.test(formattedMessage.message)) {
-      const reply = Math.random() < 0.5 ? '乃乃香建议你 要！' : '乃乃香建议你 不要！';
+      const reply = (Math.random() < 0.5) ? '乃乃香建议你 要！' : '乃乃香建议你 不要！';
       nnkbot.sendGroupMsg(groupId, reply);
       return;
     }
