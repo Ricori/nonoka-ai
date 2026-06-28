@@ -99,7 +99,7 @@ export function formatAssistantMessage(text: string): FormattedMessage {
 
 export function formatInitiativePromptMessage(): FormattedMessage {
   return {
-    role: 'assistant',
+    role: 'user',
     userId: 0,
     isMentionMe: false,
     message: '（System：群友并没有@你，请根据上面的对话自然地随机插一句嘴，刷一下存在感）',
@@ -110,7 +110,7 @@ export function formatInitiativePromptMessage(): FormattedMessage {
 export function formatUserMemoryPromptMessage(userMemoryContext: string): FormattedMessage | null {
   if (userMemoryContext === '') return null;
   return {
-    role: 'assistant',
+    role: 'user',
     userId: 0,
     isMentionMe: false,
     message: `（System：【群友档案】利用以下情报与群友自然对话，但切忌直白地说“你的档案里写着”这种话：\n${userMemoryContext}）`,
