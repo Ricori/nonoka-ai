@@ -1,17 +1,22 @@
-import { printLog } from '@/utils/print';
+import { printError, printLog } from '@/utils/print';
 import { getAtCode, getReplyCode } from '@/utils/msgCode';
 import { SimpleMessageData } from '@/types/event';
 import { NonokaCore } from './nnkCore';
 
 class NonokaBot extends NonokaCore {
+  /** 发送类调用：无需等待返回值，但要吞掉断线/超时导致的 reject，避免未捕获异常 */
+  private fireCall(method: string, params: Record<string, any>) {
+    this.nonokaWS.call(method, params).catch((e) => printError(`[WS Call Error][${method}] ${e}`));
+  }
+
   /** 处理好友请求 */
   setFriendAddRequest(flag: string | number, approve: boolean) {
-    this.nonokaWS.call('set_friend_add_request', { flag: `${flag}`, approve });
+    this.fireCall('set_friend_add_request', { flag: `${flag}`, approve });
   }
 
   /** 处理拉群请求 */
   setGroupAddRequest(flag: string | number, approve: boolean) {
-    this.nonokaWS.call('set_group_add_request', {
+    this.fireCall('set_group_add_request', {
       flag: `${flag}`,
       type: 'invite',
       approve,
@@ -29,7 +34,7 @@ class NonokaBot extends NonokaCore {
     if (this.debugMode) {
       printLog(`[Send Private Msg] ${msg}`);
     }
-    this.nonokaWS.call('send_private_msg', {
+    this.fireCall('send_private_msg', {
       user_id: userId,
       message: msg,
       auto_escape: !!plainText,
@@ -48,7 +53,7 @@ class NonokaBot extends NonokaCore {
     if (this.debugMode) {
       printLog(`[Send Group Msg] ${prefix}${msg}`);
     }
-    this.nonokaWS.call('send_group_msg', {
+    this.fireCall('send_group_msg', {
       group_id: groupId,
       message: `${prefix}${msg}`,
       auto_escape: !!plainText,
@@ -81,7 +86,7 @@ class NonokaBot extends NonokaCore {
     if (this.debugMode) {
       printLog(`[Send Group Msg] ${prefix}${msg}`);
     }
-    this.nonokaWS.call('send_group_msg', {
+    this.fireCall('send_group_msg', {
       group_id: groupId,
       message: prefix + msg,
     });
@@ -96,7 +101,7 @@ class NonokaBot extends NonokaCore {
     if (this.debugMode) {
       printLog('[Send Group Forward Msg]\n', msg);
     }
-    this.nonokaWS.call('send_group_forward_msg', {
+    this.fireCall('send_group_forward_msg', {
       group_id: groupId,
       messages: msg,
     });
@@ -120,7 +125,7 @@ class NonokaBot extends NonokaCore {
    * @param {number} messageId 消息id
    */
   async deleteMsg(messageId: number) {
-    this.nonokaWS.call('delete_msg', {
+    this.fireCall('delete_msg', {
       message_id: messageId,
     });
   }

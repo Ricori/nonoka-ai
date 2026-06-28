@@ -5,6 +5,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { MessageParam } from '@anthropic-ai/sdk/resources/messages';
 import Axios from 'axios';
 import nnkbot from '@/core/nnkBot';
+import { LLM_MODELS, LLM_PARAMS } from './config';
 
 const client = new Anthropic({
   baseURL: nnkbot.config.aiReply.authropicBaseUrl,
@@ -38,16 +39,17 @@ export async function getAnthropicLLMReply(formattedMessage: FormattedMessage[])
   }));
 
   const response = await client.messages.create({
-    model: 'claude-opus-4-7',
+    model: LLM_MODELS.anthropicReply,
     system: SYSTEM_PROMPT + SECURITY_PROMPT,
     messages,
-    temperature: 0.8,
-    max_tokens: 150,
+    temperature: LLM_PARAMS.anthropicReply.temperature,
+    max_tokens: LLM_PARAMS.anthropicReply.maxTokens,
   }).catch((e: Error) => { printError(`[AiReply Error][Claude] ${e}`); return null; });
 
   // printLog('[Claude TEST] res', response);
 
-  const text = response?.content?.[0]?.text as string | undefined;
+  const firstBlock = response?.content?.[0];
+  const text = firstBlock?.type === 'text' ? firstBlock.text : undefined;
   if (text) {
     if (text.includes('kiro') || text.includes('Kiro') || text.includes('Claude')) {
       return null;

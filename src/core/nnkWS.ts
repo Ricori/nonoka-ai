@@ -54,6 +54,8 @@ export class NonokaWebsocket {
 
   private static readonly BASE_RECONNECT_DELAY = 1000;
 
+  private static readonly CALL_TIMEOUT = 15000;
+
   constructor(wsConfig: WSConfig, eventFC?: EventFunction) {
     const { host = '127.0.0.1', port = 6700 } = wsConfig;
     this.baseUrl = `ws://${host}:${port}`;
@@ -66,16 +68,23 @@ export class NonokaWebsocket {
         reject(new Error('apiWs has not been initialized.'));
         return;
       }
+      const reqid = nanoid();
+      // 超时保护，防止 echo 丢失导致 Promise 永久挂起、handler 永不释放
+      const timer = setTimeout(() => {
+        this.responseHandlers.delete(reqid);
+        reject(new Error(`WS call timeout: ${method}`));
+      }, NonokaWebsocket.CALL_TIMEOUT);
       const onSuccess = (ctxt: WSActionRes) => {
+        clearTimeout(timer);
         this.responseHandlers.delete(reqid);
         const { echo, ...result } = ctxt;
         resolve(result);
       };
       const onFailure = (err: Error) => {
+        clearTimeout(timer);
         this.responseHandlers.delete(reqid);
         reject(err);
       };
-      const reqid = nanoid();
       this.responseHandlers.set(reqid, { onFailure, onSuccess });
       this.apiWSConnection.sendUTF(JSON.stringify({
         action: method,
@@ -83,6 +92,14 @@ export class NonokaWebsocket {
         echo: { reqid },
       }));
     });
+  }
+
+  /** 断开连接时清理所有挂起的请求，避免泄漏并让调用方及时收到失败 */
+  private rejectAllPending(reason: string) {
+    if (this.responseHandlers.size === 0) return;
+    const handlers = [...this.responseHandlers.values()];
+    this.responseHandlers.clear();
+    handlers.forEach((h) => h.onFailure(new Error(reason)));
   }
 
   handleEvent(data: Record<string, any>) {
@@ -144,11 +161,13 @@ export class NonokaWebsocket {
       c.on('error', (e: Error) => {
         this.wsState[type] = WebSocketState.CLOSED;
         printError(`[WS Connect] ${type}Ws connect fail, Error: ${e.toString()}`);
+        if (type === 'api') this.rejectAllPending(`apiWs error: ${e.toString()}`);
       });
 
       c.on('close', () => {
         this.wsState[type] = WebSocketState.CLOSED;
         printLog(`[WS Connect] ${type}Ws connect close`);
+        if (type === 'api') this.rejectAllPending('apiWs connection closed');
         this.scheduleReconnect(type);
       });
 
