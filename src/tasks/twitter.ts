@@ -99,7 +99,7 @@ const task = new AsyncTask('twitterTask', async () => {
         setTimeout(() => checkLastestTweet({
           username,
           groupIds: config.config[username],
-        }), i * 10000);
+        }), i * 6500);
       }
     });
   }
