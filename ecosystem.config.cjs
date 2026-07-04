@@ -24,6 +24,7 @@ module.exports = {
       out_file: path.join(__dirname, 'logs/out.log'),
       error_file: path.join(__dirname, 'logs/error.log'),
       merge_logs: true,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss',
     },
     {
       // 日志网页服务：tail 上面的日志文件，用浏览器实时查看
@@ -34,7 +35,7 @@ module.exports = {
       env: {
         LOG_PORT: 9615,
         LOG_HOST: '0.0.0.0',
-        LOG_TOKEN: 'nonoka233',
+        LOG_TOKEN: 'log23333',
       },
     },
   ],

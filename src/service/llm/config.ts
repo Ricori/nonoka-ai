@@ -6,9 +6,9 @@ export const LLM_MODELS = {
   /** 副回复模型 */
   reply: 'kimi-k2.6',
   /** 群友记忆归纳模型 */
-  summarize: 'qwen3.6-plus',
+  summarize: 'qwen3.7-plus',
   /** 翻译模型 */
-  translate: 'qwen3.6-plus',
+  translate: 'kimi-k2.6',
 } as const;
 
 export const LLM_PARAMS = {

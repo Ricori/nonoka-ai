@@ -200,7 +200,7 @@ export async function createScreenshot(data: TweetPost) {
   const { time, day } = formatTime(data.time);
 
   const html = createHtml({
-    avatarUrl: data.userPofile,
+    avatarUrl: data.userProfile,
     displayName: data.username,
     username: data.userScreenName,
     mainText: text,
