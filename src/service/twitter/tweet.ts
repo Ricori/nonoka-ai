@@ -6,7 +6,7 @@ import { translateText } from '@/service/llm';
 export interface TweetPost {
   username: string;
   userScreenName: string;
-  userPofile: string;
+  userProfile: string;
   time: number;
   link: string;
   tweetText: string;
@@ -19,45 +19,35 @@ function getTweetId(url: string) {
   return m ? m[1] : null;
 }
 function getTimestampFromTweetId(id: string) {
-  // 逆向推特的Snowflake算法
-  let temp = BigInt(id).toString(2);
-  temp = temp.slice(0, temp.length - 22);
-  return parseInt(temp, 2) + 1288834974657;
+  // 逆向推特的Snowflake算法：右移22位（即除以2^22）再加纪元偏移
+  return Number(BigInt(id) / 4194304n) + 1288834974657;
 }
 
-
-export async function getLatestTweet(username: string) {
+export async function getLatestTweetsBatch(usernames: string[]) {
   const nnkServiceConfig = nnkbot.config.nonokaService;
-  const nnkURL = `${nnkServiceConfig.baseUrl}/tweets/top/${username}?apikey=${nnkServiceConfig.apiKey}`;
+  const nnkURL = `${nnkServiceConfig.baseUrl}/tweets/batch?apikey=${nnkServiceConfig.apiKey}`;
 
-  for (let i = 0; i < 2; i++) {
-    try {
-      const ret = await Axios.get(nnkURL, { timeout: 25000 });
-      if (ret?.data?.success === false) {
-        throw new Error('[NonokaService] getLatestTweet API Error.');
-      }
-      if (ret?.data && ret.data.list?.length > 0) {
-        const urlList = ret.data.list;
-        const tweetId = getTweetId(urlList[0]);
-        if (!tweetId) return undefined;
+  try {
+    const ret = await Axios.post(nnkURL, { usernames }, { timeout: 52000 });
+    if (!ret.data) return null;
+    if (ret.data.success && ret.data.users?.length > 0) {
+      const userList = ret.data.users as { username: string, latest: string }[];
+      return userList.map((user) => {
+        const tweetId = getTweetId(user.latest);
+        if (!tweetId) return null;
         const time = getTimestampFromTweetId(tweetId);
         return {
+          username: user.username,
           tweetId,
           time,
         };
-      }
-      return undefined;
-    } catch (e) {
-      if (i === 1) {
-        return undefined;
-      }
-      await new Promise((resolve) => {
-        setTimeout(resolve, 1000);
-      });
+      }).filter((item): item is NonNullable<typeof item> => item !== null);
     }
+    return null;
+  } catch (e) {
+    printError(`[NonokaService] getLatestTweetsBatch API Error: ${e.message}`);
   }
-
-  return undefined;
+  return null;
 }
 
 export async function getTweetPost(tweetId: string, translate = true) {
@@ -81,7 +71,7 @@ async function resolveData(apiResponse: Record<any, any>, translate: boolean) {
   const tweetURL: string = apiResponse.tweetURL || '';
   const time: number = new Date(apiResponse.date || '').getTime();
   const userScreenName: string = apiResponse.user_screen_name || '';
-  const userPofile: string = apiResponse.user_profile_image_url?.replace('pbs.twimg.com', 'pbs-twimg-cdn.kvv.me');
+  const userProfile: string = apiResponse.user_profile_image_url?.replace('pbs.twimg.com', 'pbs-twimg-cdn.kvv.me') || '';
   const imgUrls: string[] = [];
   const videoUrls: string[] = [];
 
@@ -94,7 +84,7 @@ async function resolveData(apiResponse: Record<any, any>, translate: boolean) {
     translatedText = await translateText(tweetText);
   }
 
-  for (const [_i, media] of apiResponse.media_extended.entries()) {
+  for (const media of apiResponse.media_extended ?? []) {
     let mediaUrl: string = media.url || '';
     if (media.type === 'image') {
       mediaUrl = mediaUrl.replace('pbs.twimg.com', 'pbs-twimg-cdn.kvv.me');
@@ -114,7 +104,7 @@ async function resolveData(apiResponse: Record<any, any>, translate: boolean) {
     translatedText,
     imgUrls,
     videoUrls,
-    userPofile,
+    userProfile,
   };
   return post;
 }
