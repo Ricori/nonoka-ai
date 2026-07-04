@@ -8,7 +8,7 @@
  *   LOG_PORT   监听端口，默认 9615
  *   LOG_HOST   绑定地址，默认 0.0.0.0（对外可访问）
  *   LOG_TOKEN  访问令牌，建议设置；设置后需用 ?token=xxx 访问
- *   LOG_FILES  要 tail 的文件，逗号分隔，默认 logs/out.log,logs/error.log
+ *   LOG_FILES  要 tail 的文件，逗号分隔，默认 logs/nonoka.log
  *   LOG_TAIL   初次连接回放的行数，默认 300
  */
 const http = require('http');
@@ -45,6 +45,34 @@ function readLastLines(file, n) {
   }
 }
 
+/** 从一行日志里提取时间戳（配合 pm2 的 log_date_format），提取不到返回 null */
+function extractTime(line) {
+  const m = line.match(/^(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(\.\d+)?)/);
+  if (!m) return null;
+  const t = Date.parse(m[1].replace(' ', 'T'));
+  return Number.isNaN(t) ? null : t;
+}
+
+/** 汇总所有文件最近的日志行，按时间排序后只保留最近 n 条（跨文件合计，而非每个文件各 n 条） */
+function readMergedTail(files, n) {
+  const merged = [];
+  files.forEach((file, fileIdx) => {
+    const tag = path.basename(file);
+    readLastLines(file, n).forEach((line, idx) => {
+      merged.push({ tag, line, time: extractTime(line), fileIdx, idx });
+    });
+  });
+  merged.sort((a, b) => {
+    if (a.time != null && b.time != null) return a.time - b.time;
+    if (a.time == null && b.time == null) {
+      return a.fileIdx - b.fileIdx || a.idx - b.idx;
+    }
+    // 没有时间戳的行排不出先后，退化为按原始顺序
+    return a.time == null ? -1 : 1;
+  });
+  return merged.slice(-n);
+}
+
 /** 监听单个文件的增量内容 */
 function watchFile(file) {
   let size = 0;
@@ -79,7 +107,7 @@ function watchFile(file) {
         .filter((l) => l.length > 0)
         .forEach((l) => broadcast(`[${tag}] ${l}`));
     });
-    stream.on('error', () => {});
+    stream.on('error', () => { });
   };
 
   // fs.watch 在某些平台对追加不灵敏，配合轮询兜底
@@ -137,13 +165,19 @@ const PAGE = `<!doctype html>
 
   autoBtn.onclick = () => { auto = !auto; autoBtn.textContent = '自动滚动: ' + (auto ? '开' : '关'); };
   document.getElementById('clear').onclick = () => { logEl.innerHTML = ''; };
-  filterEl.oninput = () => { filter = filterEl.value.toLowerCase(); };
+  filterEl.oninput = () => {
+    filter = filterEl.value.toLowerCase();
+    for (const div of logEl.children) {
+      div.style.display = (!filter || div.dataset.text.includes(filter)) ? '' : 'none';
+    }
+  };
 
   function append(text) {
-    if (filter && !text.toLowerCase().includes(filter)) return;
     const div = document.createElement('div');
     div.className = 'line' + (/\\[error\\.log\\]|error|fail|exception/i.test(text) ? ' err' : '');
     div.textContent = text;
+    div.dataset.text = text.toLowerCase();
+    if (filter && !div.dataset.text.includes(filter)) div.style.display = 'none';
     logEl.appendChild(div);
     while (logEl.childElementCount > 5000) logEl.removeChild(logEl.firstChild);
     if (auto) window.scrollTo(0, document.body.scrollHeight);
@@ -181,12 +215,9 @@ const server = http.createServer((req, res) => {
     });
     res.write('retry: 2000\n\n');
 
-    // 回放每个文件的最后若干行
-    for (const file of FILES) {
-      const tag = path.basename(file);
-      for (const line of readLastLines(file, TAIL_LINES)) {
-        res.write(`data: [${tag}] ${line.replace(/\n/g, '\\n')}\n\n`);
-      }
+    // 回放所有文件最近的日志，按时间合并，跨文件合计只取最近 TAIL_LINES 条
+    for (const { tag, line } of readMergedTail(FILES, TAIL_LINES)) {
+      res.write(`data: [${tag}] ${line.replace(/\n/g, '\\n')}\n\n`);
     }
 
     clients.add(res);
