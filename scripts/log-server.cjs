@@ -58,16 +58,20 @@ function readMergedTail(files, n) {
   const merged = [];
   files.forEach((file, fileIdx) => {
     const tag = path.basename(file);
+    let lastTime = null;
     readLastLines(file, n).forEach((line, idx) => {
-      merged.push({ tag, line, time: extractTime(line), fileIdx, idx });
+      // 没有时间戳的行（如多行堆栈续行）沿用同文件上一行的时间，跟在其后而不是被甩到最前
+      const time = extractTime(line) ?? lastTime;
+      if (time != null) lastTime = time;
+      merged.push({ tag, line, time, fileIdx, idx });
     });
   });
   merged.sort((a, b) => {
-    if (a.time != null && b.time != null) return a.time - b.time;
+    if (a.time != null && b.time != null) return a.time - b.time || a.fileIdx - b.fileIdx || a.idx - b.idx;
     if (a.time == null && b.time == null) {
       return a.fileIdx - b.fileIdx || a.idx - b.idx;
     }
-    // 没有时间戳的行排不出先后，退化为按原始顺序
+    // 一边有时间一边没有（整份日志都没时间戳的极端情况），退化为按原始顺序
     return a.time == null ? -1 : 1;
   });
   return merged.slice(-n);
