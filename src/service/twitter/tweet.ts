@@ -14,7 +14,8 @@ export interface TweetPost {
   imgUrls: string[];
   videoUrls: string[];
 }
-function getTweetId(url: string) {
+function getTweetId(url?: string | null) {
+  if (!url) return null;
   const m = url.match(/status\/(\d+)/);
   return m ? m[1] : null;
 }
@@ -31,10 +32,13 @@ export async function getLatestTweetsBatch(usernames: string[]) {
     const ret = await Axios.post(nnkURL, { usernames }, { timeout: 52000 });
     if (!ret.data) return null;
     if (ret.data.success && ret.data.users?.length > 0) {
-      const userList = ret.data.users as { username: string, latest: string }[];
+      const userList = ret.data.users as { username: string, latest?: string | null }[];
       return userList.map((user) => {
         const tweetId = getTweetId(user.latest);
-        if (!tweetId) return null;
+        if (!tweetId) {
+          printError(`[NonokaService] getLatestTweetsBatch API: ${user.username} scrape failed.`);
+          return null;
+        }
         const time = getTimestampFromTweetId(tweetId);
         return {
           username: user.username,
