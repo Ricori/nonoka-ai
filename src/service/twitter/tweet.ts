@@ -75,7 +75,7 @@ async function resolveData(apiResponse: Record<any, any>, translate: boolean) {
   const tweetURL: string = apiResponse.tweetURL || '';
   const time: number = new Date(apiResponse.date || '').getTime();
   const userScreenName: string = apiResponse.user_screen_name || '';
-  const userProfile: string = apiResponse.user_profile_image_url?.replace('pbs.twimg.com', 'pbs-twimg-cdn.kvv.me') || '';
+  const userProfile: string = apiResponse.user_profile_image_url?.replace('pbs.twimg.com', 'cdn.nonoka.online/x/pbs') || '';
   const imgUrls: string[] = [];
   const videoUrls: string[] = [];
 
@@ -91,10 +91,10 @@ async function resolveData(apiResponse: Record<any, any>, translate: boolean) {
   for (const media of apiResponse.media_extended ?? []) {
     let mediaUrl: string = media.url || '';
     if (media.type === 'image') {
-      mediaUrl = mediaUrl.replace('pbs.twimg.com', 'pbs-twimg-cdn.kvv.me');
+      mediaUrl = mediaUrl.replace('pbs.twimg.com', 'cdn.nonoka.online/x/pbs');
       imgUrls.push(mediaUrl);
     } else if (media.type === 'video' || media.type === 'gif') {
-      mediaUrl = mediaUrl.replace('video.twimg.com', 'video-twimg-cdn.kvv.me');
+      mediaUrl = mediaUrl.replace('video.twimg.com', 'cdn.nonoka.online/x/video');
       videoUrls.push(mediaUrl);
     }
   }
