@@ -1,6 +1,7 @@
 
 import nnkbot from '@/core/nnkBot';
 import nnkSchedule from '@/core/nnkSchedule';
+import { NonokaAdmin } from '@/core/nnkAdmin';
 import BilibiliNewSharedJob from '@/tasks/bilibili';
 import SystemCleanupJob from '@/tasks/clean';
 import TwitterPushJob from '@/tasks/twitter';
@@ -51,6 +52,9 @@ nnkSchedule.loadJob([
   // BilibiliNewSharedJob,
   TwitterPushJob,
 ]);
+
+// 启动管理面板
+new NonokaAdmin(nnkbot).start();
 
 // ののか，Link Start ~
 nnkbot.start();
