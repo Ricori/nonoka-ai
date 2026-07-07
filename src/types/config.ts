@@ -21,6 +21,8 @@ export interface BotConfig {
   repeater: {
     /** 打开复读机 */
     enable: boolean;
+    /** 黑名单群号 */
+    blackList: number[];
   },
   /** B站动态推送 */
   biliDynamicPush: {

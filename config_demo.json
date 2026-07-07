@@ -13,7 +13,8 @@
       "apiKey": ""
     },
     "repeater": {
-      "enable": true
+      "enable": true,
+      "blackList": []
     },
     "biliDynamicPush": {
       "enable": true,

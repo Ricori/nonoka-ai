@@ -6,13 +6,13 @@ export const LLM_MODELS = {
   /** 副回复模型 */
   reply: 'kimi-k2.6',
   /** 群友记忆归纳模型 */
-  summarize: 'qwen3.7-plus',
+  summarize: 'kimi-k2.7-code',
   /** 翻译模型 */
   translate: 'kimi-k2.6',
 } as const;
 
 export const LLM_PARAMS = {
   reply: { temperature: 0.8, maxTokens: 150, timeout: 20000 },
-  summarize: { temperature: 0.3, maxTokens: 120, timeout: 15000 },
+  summarize: { temperature: 0.3, maxTokens: 120, timeout: 20000 },
   anthropicReply: { temperature: 0.8, maxTokens: 150 },
 } as const;
