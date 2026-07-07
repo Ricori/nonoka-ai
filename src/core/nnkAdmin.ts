@@ -30,6 +30,15 @@ function readConfigFile(): NonokaConfig {
   return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
 }
 
+/**
+ * wsConfig（WebSocket 连接地址/端口）与 nonokaService（服务地址/密钥）不允许
+ * 通过管理面板读取或修改，仅能直接编辑 config.json
+ */
+function redactConfig(config: NonokaConfig) {
+  const { nonokaService, ...restBotConfig } = config.botConfig;
+  return { botConfig: restBotConfig };
+}
+
 function writeConfigFile(config: NonokaConfig) {
   const tmpPath = `${CONFIG_PATH}.tmp`;
   fs.writeFileSync(tmpPath, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
@@ -111,8 +120,7 @@ const PAGE = `<!doctype html>
     <h2>基础设置</h2>
     <div class="row"><label>管理员 QQ</label><input type="text" id="admin" placeholder="用逗号分隔，例如 123,456"></div>
     <div class="row"><label>自动同意加好友</label><input type="checkbox" id="autoAddFriend"></div>
-    <div class="row"><label>Nonoka 服务地址</label><input type="text" id="nonokaBaseUrl"></div>
-    <div class="row"><label>Nonoka 服务密钥</label><input type="password" id="nonokaApiKey"><span class="eye" data-for="nonokaApiKey">👁</span></div>
+    <div class="row"><span class="hint">Nonoka 服务地址 / 密钥不通过本面板读取或修改，请直接编辑 config.json</span></div>
   </section>
 
   <section>
@@ -161,11 +169,7 @@ const PAGE = `<!doctype html>
   </section>
 
   <section>
-    <details>
-      <summary>高级：WebSocket 连接设置（修改后需重启机器人才能生效）</summary>
-      <div class="row"><label>host</label><input type="text" id="wsHost"></div>
-      <div class="row"><label>port</label><input type="number" id="wsPort"></div>
-    </details>
+    <span class="hint">WebSocket 连接设置（host / port）不通过本面板读取或修改，请直接编辑 config.json</span>
   </section>
 </main>
 <script>
@@ -223,8 +227,6 @@ const PAGE = `<!doctype html>
     const bc = cfg.botConfig;
     document.getElementById('admin').value = (bc.admin || []).join(',');
     document.getElementById('autoAddFriend').checked = !!bc.autoAddFriend;
-    document.getElementById('nonokaBaseUrl').value = bc.nonokaService.baseUrl || '';
-    document.getElementById('nonokaApiKey').value = bc.nonokaService.apiKey || '';
 
     document.getElementById('repeaterEnable').checked = !!bc.repeater.enable;
     document.getElementById('repeaterBlackList').value = (bc.repeater.blackList || []).join(',');
@@ -243,24 +245,13 @@ const PAGE = `<!doctype html>
     document.getElementById('hPicEnable').checked = !!bc.hPic.enable;
     document.getElementById('hPicWhiteList').value = (bc.hPic.whiteGroupIds || []).join(',');
     document.getElementById('hPicR18').checked = !!bc.hPic.enableR18;
-
-    document.getElementById('wsHost').value = cfg.wsConfig.host || '';
-    document.getElementById('wsPort').value = cfg.wsConfig.port || 0;
   }
 
   function collect() {
     return {
-      wsConfig: {
-        host: document.getElementById('wsHost').value.trim(),
-        port: Number(document.getElementById('wsPort').value) || 0,
-      },
       botConfig: {
         admin: parseNumList(document.getElementById('admin').value),
         autoAddFriend: document.getElementById('autoAddFriend').checked,
-        nonokaService: {
-          baseUrl: document.getElementById('nonokaBaseUrl').value.trim(),
-          apiKey: document.getElementById('nonokaApiKey').value,
-        },
         repeater: {
           enable: document.getElementById('repeaterEnable').checked,
           blackList: parseNumList(document.getElementById('repeaterBlackList').value),
@@ -378,7 +369,7 @@ export class NonokaAdmin {
     if (url.pathname === '/api/config' && req.method === 'GET') {
       const config = readConfigFile();
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(config));
+      res.end(JSON.stringify(redactConfig(config)));
       return;
     }
 
@@ -392,14 +383,28 @@ export class NonokaAdmin {
         return;
       }
 
-      let parsed: unknown;
+      let submitted: unknown;
       try {
-        parsed = JSON.parse(body);
+        submitted = JSON.parse(body);
       } catch {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'invalid json' }));
         return;
       }
+
+      if (!isPlainObject(submitted) || !isPlainObject(submitted.botConfig)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'invalid config shape' }));
+        return;
+      }
+
+      // wsConfig 与 nonokaService 不允许通过管理面板读取或修改，无论提交了什么，都强制沿用磁盘上的现有值
+      const existing = readConfigFile();
+      const parsed = {
+        ...submitted,
+        wsConfig: existing.wsConfig,
+        botConfig: { ...submitted.botConfig, nonokaService: existing.botConfig.nonokaService },
+      };
 
       if (!validateConfig(parsed)) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
