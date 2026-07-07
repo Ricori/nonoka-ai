@@ -21,10 +21,16 @@ export default class HPicModule extends NonokaModuleBase<PrivateMessageData | Gr
 
   async checkConditions() {
     if (!nnkbot.config.hPic.enable) return false;
-    const { message } = this.data;
-    const exec = /((要|发|份|点|张)大?(色|h|瑟|涩)图)/.exec(message);
-    if (exec !== null) {
-      return true;
+    const { message, message_type: messageType } = this.data;
+    const groupId = messageType === 'group' ? this.data.group_id : undefined;
+    const { whiteGroupIds } = nnkbot.config.hPic;
+    // Check if the group is in the whitelist or if it's a private message
+    const hasPermissions = !groupId || whiteGroupIds.includes(groupId);
+    if (hasPermissions) {
+      const exec = /((要|发|份|点|张)大?(色|h|瑟|涩)图)/.exec(message);
+      if (exec !== null) {
+        return true;
+      }
     }
     return false;
   }
@@ -32,10 +38,7 @@ export default class HPicModule extends NonokaModuleBase<PrivateMessageData | Gr
   async run() {
     const { message, user_id: userId, message_type: messageType } = this.data;
     const groupId = messageType === 'group' ? this.data.group_id : undefined;
-    const { whiteGroupIds, enableR18 } = nnkbot.config.hPic;
-
-    const hasPermissions = !groupId || whiteGroupIds.length === 0 || whiteGroupIds.includes(groupId);
-    if (!hasPermissions) return;
+    const { enableR18 } = nnkbot.config.hPic;
 
     let level = HPicLevel.SAFE;
     if (enableR18) {
