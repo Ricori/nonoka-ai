@@ -85,7 +85,7 @@ async function resolveData(apiResponse: Record<any, any>, translate: boolean) {
     tweetText = apiResponse.text;
   }
   if (tweetText && translate) {
-    translatedText = await translateText(tweetText);
+    translatedText = await translateText(tweetText) ?? '';
   }
 
   for (const media of apiResponse.media_extended ?? []) {

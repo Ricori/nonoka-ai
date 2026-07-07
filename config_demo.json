@@ -33,10 +33,6 @@
     },
     "aiReply": {
       "enable": true,
-      "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-      "apiKey": "",
-      "authropicBaseUrl": "",
-      "authropicKey": "",
       "blackList": [],
       "initiativeList": []
     },

@@ -44,14 +44,6 @@ export interface BotConfig {
   aiReply: {
     /** 是否开启AI回复 */
     enable: boolean;
-    /** 大模型平台 baseUrl */
-    baseUrl: string;
-    /** 大模型平台 key */
-    apiKey: string;
-    /** Anthropic baseURL */
-    authropicBaseUrl: string;
-    /** Anthropic key */
-    authropicKey: string;
     /** 黑名单，黑名单内的群不会触发任何回复 */
     blackList: number[];
     /** 主动发起对话的群名单 */

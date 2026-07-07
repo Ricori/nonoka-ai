@@ -1,159 +1,68 @@
-import OpenAI from 'openai';
-import type { ChatCompletionMessageParam } from 'openai/resources';
+import Axios from 'axios';
 import nnkbot from '@/core/nnkBot';
 import { printError } from '@/utils/print';
-import Axios from 'axios';
 import type { FormattedMessage } from '@/types/message';
-import {
-  SYSTEM_PROMPT, SECURITY_PROMPT, TRANSLATE_TO_CN_PROMPT, getSummarizePrompt,
-  TRANSLATE_TO_JP_PROMPT,
-} from './prompt';
-import { getAnthropicLLMReply } from './authropic';
-import { LLM_MODELS, LLM_PARAMS } from './config';
 
-const client = new OpenAI({
-  apiKey: nnkbot.config.aiReply.apiKey,
-  baseURL: nnkbot.config.aiReply.baseUrl,
-});
+/**
+ * LLM 这里只负责把请求转发给 nonoka API 服务
+ */
 
-export async function getLLMReply(formattedMessage: FormattedMessage[]): Promise<string | null> {
-  if (nnkbot.config.aiReply.authropicKey) {
-    // 配置了 Authropic key,就用 claude 模型
-    const anthropicRes = await getAnthropicLLMReply(formattedMessage);
-    if (anthropicRes) {
-      // 有数据就 return，不行就走下面 kimi2.6模型
-      return anthropicRes;
-    }
-  }
+// claude 失败会在服务端回退 kimi 并可能去图重试，留足余量
+const REPLY_TIMEOUT = 90000;
+const COMMON_TIMEOUT = 40000;
 
-  const systemMsg: ChatCompletionMessageParam = {
-    role: 'system',
-    content: [
-      {
-        type: 'text',
-        text: SYSTEM_PROMPT + SECURITY_PROMPT,
-        cache_control: { type: 'ephemeral' },
-      } as any,
-    ],
-  };
-
-  // 查最后一张图片消息，加缓存标记
-  const lastImgIndex = formattedMessage.map((msg) => !!msg.imgUrl).lastIndexOf(true);
-  const chatCompletionMessages = formattedMessage.map((msg, index) => {
-    let content: ChatCompletionMessageParam['content'] = msg.message;
-    if (msg.imgUrl) {
-      const isLastImgObj = index === lastImgIndex;
-      content = [
-        {
-          type: 'text',
-          text: msg.message,
-          ...(isLastImgObj ? { cache_control: { type: 'ephemeral' } } : {}),
-        },
-        {
-          type: 'image_url',
-          image_url: {
-            url: msg.imgUrl,
-            detail: 'low',
-          },
-        },
-      ];
-    } else if (msg.cacheControl) {
-      // 普通消息缓存标记
-      content = [{
-        type: 'text',
-        text: msg.message,
-        cache_control: { type: 'ephemeral' },
-      } as any];
-    }
-    return { role: msg.role, content } as ChatCompletionMessageParam;
-  });
-
-  const messagesToAPI: ChatCompletionMessageParam[] = [systemMsg, ...chatCompletionMessages];
-  // printLog('[TEST] messagesToAPI');
-  // console.log(JSON.stringify(messagesToAPI, null, 2));
-
-  let response = await client.chat.completions.create(
-    {
-      model: LLM_MODELS.reply,
-      messages: messagesToAPI,
-      temperature: LLM_PARAMS.reply.temperature,
-      max_tokens: LLM_PARAMS.reply.maxTokens,
-    },
-    { timeout: LLM_PARAMS.reply.timeout },
-  ).catch((e) => { printError(`[AiReply Error][Kimi] ${e}`); return null; });
-
-  if (!response?.choices?.[0]?.message?.content) {
-    // 多半是远程图片拉取失败，去掉图片消息后重试
-    const messagesNoImg: ChatCompletionMessageParam[] = messagesToAPI.map((msg) => {
-      if (Array.isArray(msg.content)) {
-        const textParts = msg.content.filter((p) => p.type === 'text');
-        const text = textParts.map((p) => (p as { type: 'text'; text: string }).text).join('');
-        return { ...msg, content: text || '[图片]' };
-      }
-      return msg;
-    });
-    response = await client.chat.completions.create(
-      {
-        model: LLM_MODELS.reply,
-        messages: messagesNoImg,
-        temperature: LLM_PARAMS.reply.temperature,
-        max_tokens: LLM_PARAMS.reply.maxTokens,
-      },
-      { timeout: LLM_PARAMS.reply.timeout },
-    ).catch((e) => { printError(`[AiReply Error][Kimi Retry] ${e}`); return null; });
-  }
-
-  if (response?.choices?.[0]?.message?.content) {
-    return response.choices[0].message.content as string;
-  }
-
-  return null;
+function getServiceUrl(path: string) {
+  const { baseUrl, apiKey } = nnkbot.config.nonokaService;
+  return `${baseUrl}${path}?apikey=${apiKey}`;
 }
 
+export async function getLLMReply(formattedMessage: FormattedMessage[]): Promise<string | null> {
+  const messages = formattedMessage.map(({
+    role, message, imgUrl, cacheControl,
+  }) => ({
+    role, message, imgUrl, cacheControl,
+  }));
 
-/** 用 LLM 将用户近期消息归纳为不超过 6 条核心特征短句 */
+  const ret = await Axios.post(getServiceUrl('/llm/reply'), { messages }, {
+    timeout: REPLY_TIMEOUT,
+  }).catch((e) => {
+    printError(`[LLM reply error] ${e.message}`);
+    return null;
+  });
+
+  return ret?.data?.text ?? null;
+}
+
+/** 将用户近期消息归纳为不超过 6 条核心特征短句 */
 export async function summarizeUserTraits(
   nickName: string,
   messages: string[],
   existingTraits: string[],
 ): Promise<string[]> {
-  const prompt = getSummarizePrompt(nickName, messages, existingTraits);
+  const ret = await Axios.post(getServiceUrl('/llm/summarize'), {
+    nickName, messages, existingTraits,
+  }, {
+    timeout: COMMON_TIMEOUT,
+  }).catch((e) => {
+    printError(`[LLM summarize error] ${e.message}`);
+    return null;
+  });
 
-  const response = await client.chat.completions.create({
-    model: LLM_MODELS.summarize,
-    messages: [{ role: 'user', content: prompt }],
-    temperature: LLM_PARAMS.summarize.temperature,
-    max_tokens: LLM_PARAMS.summarize.maxTokens,
-  }, { timeout: LLM_PARAMS.summarize.timeout }).catch((e) => { printError(`[AiReply Summarize Error] ${e}`); return null; });
-
-  const content = response?.choices?.[0]?.message?.content ?? '';
-
-  const results = [...content.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
-  if (results.length > 0) {
-    return results;
+  const traits = ret?.data?.traits;
+  if (Array.isArray(traits) && traits.length > 0) {
+    return traits;
   }
-
   return existingTraits;
 }
 
 /** 调用LLM翻译 */
-export async function translateText(text: string, lang = 'cn') {
-  const ret = await Axios.post(`${nnkbot.config.aiReply.baseUrl}/chat/completions`, {
-    model: LLM_MODELS.translate,
-    messages: [
-      { role: 'user', content: (lang === 'cn' ? TRANSLATE_TO_CN_PROMPT : TRANSLATE_TO_JP_PROMPT) + text },
-    ],
-  }, {
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${nnkbot.config.aiReply.apiKey}`,
-    },
+export async function translateText(text: string, lang = 'cn'): Promise<string | null> {
+  const ret = await Axios.post(getServiceUrl('/llm/translate'), { text, lang }, {
+    timeout: COMMON_TIMEOUT,
   }).catch((e) => {
-    printError(`[Aliyun Error] Fetch Error: ${e.message}`);
+    printError(`[LLM translate error] ${e.message}`);
     return null;
   });
-  if (ret?.data?.choices?.[0]?.message?.content) {
-    return ret.data.choices[0].message.content;
-  }
-  return null;
+
+  return ret?.data?.text ?? null;
 }
