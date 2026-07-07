@@ -25,6 +25,11 @@ module.exports = {
       error_file: path.join(__dirname, 'logs/error.log'),
       merge_logs: true,
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
+
+      env: {
+        ADMIN_TOKEN: 'admin23333',
+        ADMIN_PORT: 9616,
+      },
     },
     {
       // 日志网页服务：tail 上面的日志文件，用浏览器实时查看
