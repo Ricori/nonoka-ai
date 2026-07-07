@@ -49,7 +49,7 @@ async function processReplyQueue(groupId: number, isInitiativeReply = false) {
       aiReplyText = await getLLMReply([...history, ...(userMemoryPrompt ? [userMemoryPrompt] : [])]);
     }
 
-    printLog(`[GroupAIReplyModule] Auto reply: ${aiReplyText}`);
+    printLog(`[GroupAIReplyModule] Auto reply to ${groupId}: ${aiReplyText}`);
     if (aiReplyText) {
       // 记忆自己的回复
       const aiReplyMessageParam = formatAssistantMessage(aiReplyText);
