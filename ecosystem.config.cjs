@@ -27,8 +27,9 @@ module.exports = {
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
 
       env: {
-        ADMIN_TOKEN: 'admin23333',
+        ADMIN_HOST: '0.0.0.0',
         ADMIN_PORT: 9616,
+        ADMIN_TOKEN: 'admin23333',
       },
     },
     {
@@ -38,8 +39,8 @@ module.exports = {
       cwd: __dirname,
       autorestart: true,
       env: {
-        LOG_PORT: 9615,
         LOG_HOST: '0.0.0.0',
+        LOG_PORT: 9615,
         LOG_TOKEN: 'log23333',
       },
     },
