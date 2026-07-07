@@ -105,7 +105,24 @@ async function checkLatestTweet() {
 }
 
 
+// 白天执行间隔（毫秒）
+const DAY_INTERVAL = 240 * 1000;
+// 深夜（服务器时间 1--7 点）执行间隔（毫秒）
+const NIGHT_INTERVAL = 480 * 1000;
+// 上一次实际执行的时间戳
+let lastRunTime = 0;
+
+function getCurrentInterval() {
+  const hour = new Date().getHours();
+  // 深夜 1--7 点改为 10 分钟一次
+  return hour >= 1 && hour < 7 ? NIGHT_INTERVAL : DAY_INTERVAL;
+}
+
 const task = new AsyncTask('twitterTask', async () => {
+  const now = Date.now();
+  if (now - lastRunTime < getCurrentInterval()) return;
+  lastRunTime = now;
+
   const botIsConnect = nnkbot.getIsBotConnecting();
   if (!botIsConnect) return;
   const config = nnkbot.config.tweetPush;

@@ -10,6 +10,8 @@ export default class RepeaterModule extends NonokaModuleBase<GroupMessageData> {
   async checkConditions() {
     if (!nnkbot.config.repeater.enable) return false;
     const { message, group_id: groupId } = this.data;
+    if (nnkbot.config.repeater.blackList.includes(groupId)) return false;
+
     const times = nnkStorage.saveRepeaterLog(groupId, message);
     const randomValue = Math.floor(Math.random() * 2);
     return times >= 2 + randomValue;

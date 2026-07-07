@@ -14,7 +14,8 @@ export interface TweetPost {
   imgUrls: string[];
   videoUrls: string[];
 }
-function getTweetId(url: string) {
+function getTweetId(url?: string | null) {
+  if (!url) return null;
   const m = url.match(/status\/(\d+)/);
   return m ? m[1] : null;
 }
@@ -31,10 +32,13 @@ export async function getLatestTweetsBatch(usernames: string[]) {
     const ret = await Axios.post(nnkURL, { usernames }, { timeout: 52000 });
     if (!ret.data) return null;
     if (ret.data.success && ret.data.users?.length > 0) {
-      const userList = ret.data.users as { username: string, latest: string }[];
+      const userList = ret.data.users as { username: string, latest?: string | null }[];
       return userList.map((user) => {
         const tweetId = getTweetId(user.latest);
-        if (!tweetId) return null;
+        if (!tweetId) {
+          printError(`[NonokaService] getLatestTweetsBatch API: ${user.username} scrape failed.`);
+          return null;
+        }
         const time = getTimestampFromTweetId(tweetId);
         return {
           username: user.username,
@@ -71,7 +75,7 @@ async function resolveData(apiResponse: Record<any, any>, translate: boolean) {
   const tweetURL: string = apiResponse.tweetURL || '';
   const time: number = new Date(apiResponse.date || '').getTime();
   const userScreenName: string = apiResponse.user_screen_name || '';
-  const userProfile: string = apiResponse.user_profile_image_url?.replace('pbs.twimg.com', 'pbs-twimg-cdn.kvv.me') || '';
+  const userProfile: string = apiResponse.user_profile_image_url?.replace('pbs.twimg.com', 'cdn.nonoka.online/x/pbs') || '';
   const imgUrls: string[] = [];
   const videoUrls: string[] = [];
 
@@ -81,16 +85,16 @@ async function resolveData(apiResponse: Record<any, any>, translate: boolean) {
     tweetText = apiResponse.text;
   }
   if (tweetText && translate) {
-    translatedText = await translateText(tweetText);
+    translatedText = await translateText(tweetText) ?? '';
   }
 
   for (const media of apiResponse.media_extended ?? []) {
     let mediaUrl: string = media.url || '';
     if (media.type === 'image') {
-      mediaUrl = mediaUrl.replace('pbs.twimg.com', 'pbs-twimg-cdn.kvv.me');
+      mediaUrl = mediaUrl.replace('pbs.twimg.com', 'cdn.nonoka.online/x/pbs');
       imgUrls.push(mediaUrl);
     } else if (media.type === 'video' || media.type === 'gif') {
-      mediaUrl = mediaUrl.replace('video.twimg.com', 'video-twimg-cdn.kvv.me');
+      mediaUrl = mediaUrl.replace('video.twimg.com', 'cdn.nonoka.online/x/video');
       videoUrls.push(mediaUrl);
     }
   }
