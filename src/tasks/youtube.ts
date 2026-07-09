@@ -19,7 +19,7 @@ async function checkYtLive(channelId: string, groupIds: number[]) {
     nnkStorage.setYtLastPushedVideoId(channelId, status.videoId);
 
     const msgTextArr = [] as string[];
-    msgTextArr.push(`${status.title ?? '主播'} 开始直播了！`);
+    msgTextArr.push(`${status.title ?? '直播'} 开始了！`);
     if (status.thumbnail) msgTextArr.push(getImgCode(status.thumbnail));
     msgTextArr.push(`直播链接：https://www.youtube.com/watch?v=${status.videoId}`);
     const msg = msgTextArr.join('\n');
