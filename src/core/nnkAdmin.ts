@@ -21,7 +21,7 @@ function validateConfig(v: unknown): v is NonokaConfig {
   if (!isPlainObject(botConfig)) return false;
   const requiredKeys = [
     'admin', 'autoAddFriend', 'nonokaService', 'repeater',
-    'biliDynamicPush', 'tweetPush', 'aiReply', 'hPic',
+    'biliDynamicPush', 'tweetPush', 'ytLivePush', 'aiReply', 'hPic',
   ];
   return requiredKeys.every((k) => k in botConfig);
 }
@@ -155,6 +155,18 @@ const PAGE = `<!doctype html>
   </section>
 
   <section>
+    <h2>YouTube 开播推送</h2>
+    <div class="row"><label>启用</label><input type="checkbox" id="ytEnable"></div>
+    <div class="row"><label style="align-self:flex-start">推送配置</label>
+      <div style="flex:1">
+        <table id="ytConfigTable"></table>
+        <button type="button" id="ytConfigAdd">+ 添加频道 ID</button>
+        <div class="hint">左：YouTube 频道 ID（形如 UCxxxxxxxx），右：要推送的群号（逗号分隔）</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
     <h2>AI 回复</h2>
     <div class="row"><label>启用</label><input type="checkbox" id="aiEnable"></div>
     <div class="row"><label>黑名单群号</label><input type="text" id="aiBlackList" placeholder="用逗号分隔"></div>
@@ -238,6 +250,9 @@ const PAGE = `<!doctype html>
     document.getElementById('tweetEnable').checked = !!bc.tweetPush.enable;
     buildMapTable(document.getElementById('tweetConfigTable'), bc.tweetPush.config);
 
+    document.getElementById('ytEnable').checked = !!bc.ytLivePush.enable;
+    buildMapTable(document.getElementById('ytConfigTable'), bc.ytLivePush.config);
+
     document.getElementById('aiEnable').checked = !!bc.aiReply.enable;
     document.getElementById('aiBlackList').value = (bc.aiReply.blackList || []).join(',');
     document.getElementById('aiInitiativeList').value = (bc.aiReply.initiativeList || []).join(',');
@@ -265,6 +280,10 @@ const PAGE = `<!doctype html>
           enable: document.getElementById('tweetEnable').checked,
           config: readMapTable(document.getElementById('tweetConfigTable')),
         },
+        ytLivePush: {
+          enable: document.getElementById('ytEnable').checked,
+          config: readMapTable(document.getElementById('ytConfigTable')),
+        },
         aiReply: {
           enable: document.getElementById('aiEnable').checked,
           blackList: parseNumList(document.getElementById('aiBlackList').value),
@@ -281,6 +300,7 @@ const PAGE = `<!doctype html>
 
   document.getElementById('biliConfigAdd').onclick = () => addMapRow(document.getElementById('biliConfigTable'), '', '');
   document.getElementById('tweetConfigAdd').onclick = () => addMapRow(document.getElementById('tweetConfigTable'), '', '');
+  document.getElementById('ytConfigAdd').onclick = () => addMapRow(document.getElementById('ytConfigTable'), '', '');
 
   document.addEventListener('click', (e) => {
     if (e.target.classList.contains('eye')) {
