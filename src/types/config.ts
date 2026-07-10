@@ -40,6 +40,13 @@ export interface BotConfig {
     /** 推送配置 {推特用户名 : 要推送的群号列表 } */
     config: Record<string, number[]>;
   },
+  /** YouTube 开播推送 */
+  ytLivePush: {
+    /** 是否开启功能 */
+    enable: boolean;
+    /** 推送配置 {YouTube 频道名 : 要推送的群号列表 } */
+    config: Record<string, number[]>;
+  },
   /** AI回复 */
   aiReply: {
     /** 是否开启AI回复 */

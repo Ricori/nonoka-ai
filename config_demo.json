@@ -31,6 +31,12 @@
         "hiiragi_yuka530": []
       }
     },
+    "ytLivePush": {
+      "enable": true,
+      "config": {
+        "@Kotoha_ktnh": []
+      }
+    },
     "aiReply": {
       "enable": true,
       "blackList": [],

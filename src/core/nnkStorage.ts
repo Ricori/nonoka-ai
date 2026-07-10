@@ -14,6 +14,9 @@ class NonokaStorage {
   /** 各平台最新内容时间 (key: "bili-{uid}" | "twitter-{username}") */
   private lastestSNSUpdateTime = new Map<string, number>();
 
+  /** 各 YouTube 频道上次已推送直播的 videoId，用于判断是否是新的一场直播 */
+  private ytLastPushedVideoId = new Map<string, string>();
+
 
   /** 新增好友到待添加名单 */
   joinToBeAddedList = (userId: number) => { this.toBeAddedList.add(userId); };
@@ -71,6 +74,21 @@ class NonokaStorage {
   /** 获取某推特用户最新推文时间 */
   getTwitterLastestTweetTime(username: string) {
     return this.lastestSNSUpdateTime.get(`twitter-${username}`) ?? 0;
+  }
+
+  /** 设置某 YouTube 频道上次已推送直播的 videoId */
+  setYtLastPushedVideoId(channelName: string, videoId: string) {
+    this.ytLastPushedVideoId.set(channelName, videoId);
+  }
+
+  /** 获取某 YouTube 频道上次已推送直播的 videoId */
+  getYtLastPushedVideoId(channelName: string) {
+    return this.ytLastPushedVideoId.get(channelName);
+  }
+
+  /** 清除某 YouTube 频道的推送记录（下播后调用，以便下次开播能重新推送） */
+  clearYtLastPushedVideoId(channelName: string) {
+    this.ytLastPushedVideoId.delete(channelName);
   }
 }
 

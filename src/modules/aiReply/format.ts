@@ -113,6 +113,6 @@ export function formatUserMemoryPromptMessage(userMemoryContext: string): Format
     role: 'user',
     userId: 0,
     isMentionMe: false,
-    message: `（System：【群友档案】利用以下情报与群友自然对话，但切忌直白地说“你的档案里写着”这种话：\n${userMemoryContext}）`,
+    message: `（System：【群友档案】以下是你对这几位群友的印象，回复时自然运用即可，不要提及档案、资料、情报的存在，也不要逐条复述：\n${userMemoryContext}\n请继续回复上面对话中最后一条群友的消息）`,
   };
 }

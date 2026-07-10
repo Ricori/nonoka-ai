@@ -5,6 +5,7 @@ import { NonokaAdmin } from '@/core/nnkAdmin';
 import BilibiliNewSharedJob from '@/tasks/bilibili';
 import SystemCleanupJob from '@/tasks/clean';
 import TwitterPushJob from '@/tasks/twitter';
+import YtLivePushJob from '@/tasks/youtube';
 import RequestFriendModule from '@/modules/request/requestFriend';
 import AdminModule from '@/modules/admin';
 import ImageSearchModule from '@/modules/common/imageSearch';
@@ -51,6 +52,7 @@ nnkSchedule.loadJob([
   SystemCleanupJob,
   // BilibiliNewSharedJob,
   TwitterPushJob,
+  YtLivePushJob,
 ]);
 
 // 启动管理面板

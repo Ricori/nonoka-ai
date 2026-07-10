@@ -9,7 +9,7 @@ import type { FormattedMessage } from '@/types/message';
 
 // claude 失败会在服务端回退 kimi 并可能去图重试，留足余量
 const REPLY_TIMEOUT = 90000;
-const COMMON_TIMEOUT = 40000;
+const COMMON_TIMEOUT = 50000;
 
 function getServiceUrl(path: string) {
   const { baseUrl, apiKey } = nnkbot.config.nonokaService;
