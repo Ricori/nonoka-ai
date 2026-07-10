@@ -36,7 +36,7 @@ export function formatMessage(
   let isMentionMe = rawMessage.indexOf(`[CQ:at,qq=${selfId}]`) > -1;
 
   // 包含名字也算被提到
-  if (rawMessage.includes('乃乃香')) {
+  if (rawMessage.includes('乃乃香') || rawMessage.includes('nonoka') || rawMessage.includes('nnk')) {
     isMentionMe = true;
   }
 
