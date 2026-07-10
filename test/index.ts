@@ -5,7 +5,7 @@ import Axios from 'axios';
 import { printError } from '@/utils/print';
 import { createScreenshot } from '@/service/twitter/screenshot';
 import { getLatestTweetsBatch, getTweetPost } from '@/service/twitter/tweet';
-import { createMsgFromTweetId } from '@/tasks/twitter';
+import { createMsgFromTweetId } from '@/service/twitter/message';
 import getMessageCode, { extractCQCodes } from '@/utils/msgCode';
 import { startTransfer } from '@/modules/group/ykhr/transfer';
 import { testAI } from './ai';

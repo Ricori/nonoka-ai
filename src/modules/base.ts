@@ -5,6 +5,9 @@ export default class NonokaModuleBase<T extends MessageType> {
   /** 模块唯一名称 */
   static NAME = '';
 
+  /** 可选的启动初始化，模块被 loadModule 注册时执行一次（多条消息链重复注册也只执行一次） */
+  static init?: () => void;
+
   /** 消息数据 */
   protected data: T;
 

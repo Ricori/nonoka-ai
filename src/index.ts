@@ -47,7 +47,7 @@ nnkbot.loadModule('group', [
   GroupAIReplyModule,
 ]);
 
-// 加载定时任务
+// 加载定时任务（任务定义了 init 的会在加载时自动执行）
 nnkSchedule.loadJob([
   SystemCleanupJob,
   // BilibiliNewSharedJob,

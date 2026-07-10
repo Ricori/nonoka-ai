@@ -1,10 +1,21 @@
 import { GroupMessageData } from '@/types/event';
 import nnkbot from '@/core/nnkBot';
-import { createMsgFromTweetId } from '@/tasks/twitter';
+import { saveConfigToDisk } from '@/core/nnkConfig';
+import { createMsgFromTweetId } from '@/service/twitter/message';
 import { getRecordCode } from '@/utils/msgCode';
 import { getTTSAudio } from '@/service/tts';
 import { translateText } from '@/service/llm';
+import { printError } from '@/utils/print';
 import NonokaModuleBase from '../base';
+
+/** initiativeList 是运行时可变配置，修改后立即落盘，避免重启丢失或被管理面板旧值覆盖 */
+function persistInitiativeChange() {
+  try {
+    saveConfigToDisk();
+  } catch (e) {
+    printError(`[GroupCommandModule] 保存 initiative 配置失败: ${e}`);
+  }
+}
 
 export default class GroupCommandModule extends NonokaModuleBase<GroupMessageData> {
   static NAME = 'GroupCommandModule';
@@ -47,12 +58,14 @@ export default class GroupCommandModule extends NonokaModuleBase<GroupMessageDat
       } else if (action === 'on') {
         if (!list.includes(groupId)) {
           list.push(groupId);
+          persistInitiativeChange();
           nnkbot.sendGroupMsg(groupId, '[NonokaSystem] 已开启主动对话');
         }
       } else {
         const idx = list.indexOf(groupId);
         if (idx !== -1) {
           list.splice(idx, 1);
+          persistInitiativeChange();
           nnkbot.sendGroupMsg(groupId, '[NonokaSystem] 已关闭主动对话');
         }
       }

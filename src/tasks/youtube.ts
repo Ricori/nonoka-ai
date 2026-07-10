@@ -4,6 +4,7 @@ import nnkStorage from '@/core/nnkStorage';
 import { printLog } from '@/utils/print';
 import { getYoutubeLiveStatus } from '@/service/youtube/live';
 import { getImgCode } from '@/utils/msgCode';
+import { NonokaJob } from '@/core/nnkSchedule';
 
 async function checkYtLive(channelName: string, groupIds: number[]) {
   try {
@@ -46,15 +47,18 @@ const task = new AsyncTask('ytLiveTask', async () => {
   }
 });
 
-const YtLivePushJob = new SimpleIntervalJob({ seconds: 80 }, task, { id: 'ytLivePush', preventOverrun: true });
-
-// 启动 bot 时预先拉取一次当前直播状态，避免重启时把正在进行中的直播当作新开播重复推送
-Object.keys(nnkbot.config.ytLivePush.config).forEach((channelName: string) => {
-  getYoutubeLiveStatus(channelName).then((status) => {
-    if (status?.isLive && status.videoId) {
-      nnkStorage.setYtLastPushedVideoId(channelName, status.videoId);
-    }
-  });
-});
+const YtLivePushJob: NonokaJob = {
+  job: new SimpleIntervalJob({ seconds: 80 }, task, { id: 'ytLivePush', preventOverrun: true }),
+  // 启动 bot 时预先拉取一次当前直播状态，避免重启时把正在进行中的直播当作新开播重复推送
+  init: () => {
+    Object.keys(nnkbot.config.ytLivePush.config).forEach((channelName: string) => {
+      getYoutubeLiveStatus(channelName).then((status) => {
+        if (status?.isLive && status.videoId) {
+          nnkStorage.setYtLastPushedVideoId(channelName, status.videoId);
+        }
+      });
+    });
+  },
+};
 
 export default YtLivePushJob;

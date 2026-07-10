@@ -13,26 +13,25 @@ class MessageStorage {
   /** 群消息对话记录  (key: groupId) */
   private groupChatConversations = new Map<number, FormattedMessage[]>();
 
-  /** 每个群已备份的最后一条消息 (key: groupId) */
-  private groupBackupState = new Map<number, { date: string; lastMsg: FormattedMessage | null }>();
+  /** 每个群尚未备份到文件的消息条数 (key: groupId) */
+  private groupUnbackedCount = new Map<number, number>();
 
   /** 将群聊新增消息追加备份到当日文件，不覆盖已有内容 */
   private async backupGroupHistory(groupId: number, history: FormattedMessage[]) {
-    if (history.length === 0) return;
-    const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const state = this.groupBackupState.get(groupId);
-
-    const idx = state?.lastMsg ? history.indexOf(state.lastMsg) : -1;
-    const newMessages = idx >= 0 ? history.slice(idx + 1) : [...history];
-
-    if (newMessages.length === 0) return;
+    const count = Math.min(this.groupUnbackedCount.get(groupId) ?? 0, history.length);
+    if (count === 0) return;
+    // 在 await 前先取快照并清零计数，避免写盘期间新增的消息被漏记或重复
+    const newMessages = history.slice(-count);
+    this.groupUnbackedCount.set(groupId, 0);
 
     try {
+      const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
       const file = path.join(CHAT_BACKUP_DIR, `${groupId}_${date}.txt`);
       const lines = `${newMessages.map((m) => `[${m.userId}]${m.message}`).join('\n')}\n`;
       await fs.promises.appendFile(file, lines, 'utf-8');
-      this.groupBackupState.set(groupId, { date, lastMsg: history[history.length - 1] });
     } catch (e) {
+      // 写入失败则把这批消息计回待备份数量，下次备份时重试
+      this.groupUnbackedCount.set(groupId, (this.groupUnbackedCount.get(groupId) ?? 0) + newMessages.length);
       printError('[MessageStorage] 备份群聊记录失败', e);
     }
   }
@@ -56,8 +55,11 @@ class MessageStorage {
     }
 
     // 每累计20条备份一次群聊记录
-    if (store === this.groupChatConversations && history.length === MAX_CHAT_HISTORY_COUNT + 10) {
-      this.backupGroupHistory(key, history);
+    if (store === this.groupChatConversations) {
+      this.groupUnbackedCount.set(key, (this.groupUnbackedCount.get(key) ?? 0) + 1);
+      if (history.length === MAX_CHAT_HISTORY_COUNT + 10) {
+        this.backupGroupHistory(key, history);
+      }
     }
 
     if (history.length > MAX_CHAT_HISTORY_COUNT + 10) {
@@ -109,6 +111,8 @@ class MessageStorage {
   cleanChatConversations() {
     this.privateChatConversations.clear();
     this.groupChatConversations.clear();
+    // 会话已清空，未备份计数一并重置，避免下次备份时把新消息误当增量
+    this.groupUnbackedCount.clear();
   }
 }
 

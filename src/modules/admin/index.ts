@@ -1,6 +1,6 @@
 import { PrivateMessageData } from '@/types/event';
 import nnkbot from '@/core/nnkBot';
-import { createMsgFromTweetId } from '@/tasks/twitter';
+import { createMsgFromTweetId } from '@/service/twitter/message';
 import messageStorage from '@/modules/aiReply/storage/message';
 import nnkSchedule from '@/core/nnkSchedule';
 import NonokaModuleBase from '../base';
