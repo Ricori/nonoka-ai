@@ -14,6 +14,15 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { spawn } = require('child_process');
+
+/** 程序主目录（scripts 的上一级） */
+const ROOT = path.resolve(__dirname, '..');
+/** pm2 要 reload 的应用名（逗号分隔）。注意别写 nonoka-log，否则会把本服务自己重启掉、更新中断 */
+const UPDATE_APPS = (process.env.LOG_UPDATE_APPS || 'nonoka')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
 
 const PORT = Number(process.env.LOG_PORT || 9615);
 const HOST = process.env.LOG_HOST || '0.0.0.0';
@@ -32,6 +41,60 @@ const clients = new Set();
 function broadcast(line) {
   const payload = `data: ${line.replace(/\n/g, '\\n')}\n\n`;
   for (const res of clients) res.write(payload);
+}
+
+/** 是否正在执行更新，避免并发点击重复触发 */
+let updating = false;
+
+/** 顺序执行一组命令，输出实时广播到日志页面（带 [update] 标签） */
+function runSteps(steps, done) {
+  const line = (s) => broadcast(`[update] ${s}`);
+  let idx = 0;
+  const next = () => {
+    if (idx >= steps.length) {
+      line('✅ 更新完成');
+      done(true);
+      return;
+    }
+    const { cmd, args } = steps[idx++];
+    line(`$ ${cmd} ${args.join(' ')}`);
+    // Windows 下 git / pm2 常是 .cmd，需要 shell 才能找到
+    const child = spawn(cmd, args, { cwd: ROOT, shell: true });
+    child.stdout.on('data', (d) => d.toString('utf8').split(/\r?\n/).filter(Boolean).forEach(line));
+    child.stderr.on('data', (d) => d.toString('utf8').split(/\r?\n/).filter(Boolean).forEach(line));
+    child.on('error', (err) => {
+      line(`❌ 执行失败: ${err.message}`);
+      done(false);
+    });
+    child.on('close', (code) => {
+      if (code === 0) {
+        next();
+      } else {
+        line(`❌ 命令退出码 ${code}，更新中止`);
+        done(false);
+      }
+    });
+  };
+  next();
+}
+
+/** 执行「git pull + pm2 reload」，全过程输出广播到日志页面 */
+function doUpdate(done) {
+  if (updating) {
+    broadcast('[update] ⚠️ 已有更新任务在执行中，忽略本次请求');
+    done(false);
+    return;
+  }
+  updating = true;
+  broadcast('[update] 🚀 开始更新代码…');
+  const steps = [
+    { cmd: 'git', args: ['pull'] },
+    ...UPDATE_APPS.map((app) => ({ cmd: 'pm2', args: ['reload', app] })),
+  ];
+  runSteps(steps, (ok) => {
+    updating = false;
+    done(ok);
+  });
 }
 
 /** 读取文件最后 n 行（用于初次连接回放） */
@@ -155,6 +218,7 @@ const PAGE = `<!doctype html>
   <span id="status" class="off">● 连接中…</span>
   <span class="sp"></span>
   <input id="filter" placeholder="过滤关键字…" />
+  <button id="update">更新代码</button>
   <button id="autoscroll">自动滚动: 开</button>
   <button id="clear">清屏</button>
 </header>
@@ -169,6 +233,23 @@ const PAGE = `<!doctype html>
 
   autoBtn.onclick = () => { auto = !auto; autoBtn.textContent = '自动滚动: ' + (auto ? '开' : '关'); };
   document.getElementById('clear').onclick = () => { logEl.innerHTML = ''; };
+
+  const updateBtn = document.getElementById('update');
+  updateBtn.onclick = async () => {
+    if (!confirm('确定要执行 git pull 并 reload 机器人吗？')) return;
+    updateBtn.disabled = true;
+    const old = updateBtn.textContent;
+    updateBtn.textContent = '更新中…';
+    try {
+      const res = await fetch('/update' + (token ? '?token=' + encodeURIComponent(token) : ''), { method: 'POST' });
+      if (!res.ok) alert('触发失败: ' + res.status + ' ' + (await res.text()));
+    } catch (e) {
+      alert('触发失败: ' + e.message);
+    } finally {
+      // 进度看日志流即可，稍后恢复按钮
+      setTimeout(() => { updateBtn.disabled = false; updateBtn.textContent = old; }, 5000);
+    }
+  };
   filterEl.oninput = () => {
     filter = filterEl.value.toLowerCase();
     for (const div of logEl.children) {
@@ -206,6 +287,21 @@ function checkAuth(req) {
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
+
+  if (url.pathname === '/update') {
+    if (!checkAuth(req)) {
+      res.writeHead(401).end('unauthorized');
+      return;
+    }
+    if (req.method !== 'POST') {
+      res.writeHead(405).end('method not allowed');
+      return;
+    }
+    doUpdate(() => {});
+    // 立即返回，具体进度通过日志流实时查看
+    res.writeHead(202, { 'Content-Type': 'text/plain; charset=utf-8' }).end('更新已触发，请查看日志');
+    return;
+  }
 
   if (url.pathname === '/stream') {
     if (!checkAuth(req)) {
