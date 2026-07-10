@@ -5,18 +5,18 @@ import { printLog } from '@/utils/print';
 import { getYoutubeLiveStatus } from '@/service/youtube/live';
 import { getImgCode } from '@/utils/msgCode';
 
-async function checkYtLive(channelId: string, groupIds: number[]) {
+async function checkYtLive(channelName: string, groupIds: number[]) {
   try {
-    const status = await getYoutubeLiveStatus(channelId);
+    const status = await getYoutubeLiveStatus(channelName);
     if (!status) return;
 
     if (!status.isLive || !status.videoId) {
-      nnkStorage.clearYtLastPushedVideoId(channelId);
+      nnkStorage.clearYtLastPushedVideoId(channelName);
       return;
     }
 
-    if (nnkStorage.getYtLastPushedVideoId(channelId) === status.videoId) return;
-    nnkStorage.setYtLastPushedVideoId(channelId, status.videoId);
+    if (nnkStorage.getYtLastPushedVideoId(channelName) === status.videoId) return;
+    nnkStorage.setYtLastPushedVideoId(channelName, status.videoId);
 
     const msgTextArr = [] as string[];
     msgTextArr.push(`${status.title ?? '直播'} 开始了！`);
@@ -28,7 +28,7 @@ async function checkYtLive(channelId: string, groupIds: number[]) {
       nnkbot.sendGroupMsg(groupId, msg);
     });
   } catch (err) {
-    printLog(`[ytLiveTask] Error (${channelId}): ${err}`);
+    printLog(`[ytLiveTask] Error (${channelName}): ${err}`);
   }
 }
 
@@ -37,21 +37,21 @@ const task = new AsyncTask('ytLiveTask', async () => {
   const config = nnkbot.config.ytLivePush;
   if (!config.enable || !nnkbot.config.nonokaService.apiKey) return;
   if (botIsConnect) {
-    Object.keys(config.config).forEach((channelId: string, i: number) => {
-      if (Array.isArray(config.config[channelId])) {
-        setTimeout(() => checkYtLive(channelId, config.config[channelId]), i * 1500);
+    Object.keys(config.config).forEach((channelName: string, i: number) => {
+      if (Array.isArray(config.config[channelName])) {
+        setTimeout(() => checkYtLive(channelName, config.config[channelName]), i * 1500);
       }
     });
   }
 });
 
-const YtLivePushJob = new SimpleIntervalJob({ seconds: 60 }, task, { id: 'ytLivePush', preventOverrun: true });
+const YtLivePushJob = new SimpleIntervalJob({ seconds: 90 }, task, { id: 'ytLivePush', preventOverrun: true });
 
 // 启动 bot 时预先拉取一次当前直播状态，避免重启时把正在进行中的直播当作新开播重复推送
-Object.keys(nnkbot.config.ytLivePush.config).forEach((channelId: string) => {
-  getYoutubeLiveStatus(channelId).then((status) => {
+Object.keys(nnkbot.config.ytLivePush.config).forEach((channelName: string) => {
+  getYoutubeLiveStatus(channelName).then((status) => {
     if (status?.isLive && status.videoId) {
-      nnkStorage.setYtLastPushedVideoId(channelId, status.videoId);
+      nnkStorage.setYtLastPushedVideoId(channelName, status.videoId);
     }
   });
 });

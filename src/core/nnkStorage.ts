@@ -77,18 +77,18 @@ class NonokaStorage {
   }
 
   /** 设置某 YouTube 频道上次已推送直播的 videoId */
-  setYtLastPushedVideoId(channelId: string, videoId: string) {
-    this.ytLastPushedVideoId.set(channelId, videoId);
+  setYtLastPushedVideoId(channelName: string, videoId: string) {
+    this.ytLastPushedVideoId.set(channelName, videoId);
   }
 
   /** 获取某 YouTube 频道上次已推送直播的 videoId */
-  getYtLastPushedVideoId(channelId: string) {
-    return this.ytLastPushedVideoId.get(channelId);
+  getYtLastPushedVideoId(channelName: string) {
+    return this.ytLastPushedVideoId.get(channelName);
   }
 
   /** 清除某 YouTube 频道的推送记录（下播后调用，以便下次开播能重新推送） */
-  clearYtLastPushedVideoId(channelId: string) {
-    this.ytLastPushedVideoId.delete(channelId);
+  clearYtLastPushedVideoId(channelName: string) {
+    this.ytLastPushedVideoId.delete(channelName);
   }
 }
 

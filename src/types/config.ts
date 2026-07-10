@@ -44,7 +44,7 @@ export interface BotConfig {
   ytLivePush: {
     /** 是否开启功能 */
     enable: boolean;
-    /** 推送配置 {YouTube 频道ID : 要推送的群号列表 } */
+    /** 推送配置 {YouTube 频道名 : 要推送的群号列表 } */
     config: Record<string, number[]>;
   },
   /** AI回复 */
