@@ -46,7 +46,7 @@ const task = new AsyncTask('ytLiveTask', async () => {
   }
 });
 
-const YtLivePushJob = new SimpleIntervalJob({ seconds: 60 }, task, { id: 'ytLivePush', preventOverrun: true });
+const YtLivePushJob = new SimpleIntervalJob({ seconds: 80 }, task, { id: 'ytLivePush', preventOverrun: true });
 
 // 启动 bot 时预先拉取一次当前直播状态，避免重启时把正在进行中的直播当作新开播重复推送
 Object.keys(nnkbot.config.ytLivePush.config).forEach((channelName: string) => {
