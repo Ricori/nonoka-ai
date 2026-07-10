@@ -151,7 +151,11 @@ function watchFile(file) {
 
   const tag = path.basename(file);
 
+  let reading = false;
+
   const onChange = () => {
+    // fs.watch 和轮询可能同时触发；正在读时直接跳过，避免重复读同一段
+    if (reading) return;
     let stat;
     try {
       stat = fs.statSync(file);
@@ -160,21 +164,31 @@ function watchFile(file) {
     }
     // 日志轮转：文件被截断，重头读
     if (stat.size < size) size = 0;
-    if (stat.size === size) return;
+    if (stat.size <= size) return;
 
-    const stream = fs.createReadStream(file, { start: size, end: stat.size });
+    const start = size;
+    const end = stat.size;
+    // 立即推进 size，防止后续 onChange 再读同一段（读取是异步的）
+    size = end;
+    reading = true;
+
+    const stream = fs.createReadStream(file, { start, end: end - 1 });
     let buf = '';
     stream.on('data', (chunk) => {
       buf += chunk.toString('utf8');
     });
     stream.on('end', () => {
-      size = stat.size;
+      reading = false;
       buf
         .split(/\r?\n/)
         .filter((l) => l.length > 0)
         .forEach((l) => broadcast(`[${tag}] ${l}`));
     });
-    stream.on('error', () => { });
+    stream.on('error', () => {
+      reading = false;
+      // 读失败则回退 size，下次重试这段
+      if (size === end) size = start;
+    });
   };
 
   // fs.watch 在某些平台对追加不灵敏，配合轮询兜底
