@@ -1,21 +1,31 @@
 import { getImgs, hasImage } from '@/utils/function';
+import { hasAtUser, transformCQCodes } from '@/utils/msgCode';
 import { SimpleMessageData } from '@/types/event';
 import { FormattedMessage } from '../../types/message';
 
+/** 将消息中的CQ码转换为对 LLM 友好的占位文本 */
 function clean(rawText: string, cleanImage = false) {
-  let text = rawText.replace(/\[CQ:face,.*\]/g, '[表情]')
-    .replace(/\[CQ:video,.*\]/g, '[视频]')
-    .replace(/\[CQ:record,.*\]/g, '[语音]')
-    .replace(/\[CQ:json[\s\S]*?"desc"\s*:\s*"([^"]+)"[\s\S]*?\]/g, '分享了文章《$1》')
-    .replace(/\[CQ:forward,.*\]/g, '[聊天记录]')
-    .replace(/\[CQ:at,qq=([^,]+)\]/g, '')
-    .replace(/\[CQ:reply,id=([^,]+)\]/g, '');
-
-  if (cleanImage) {
-    text = text.replace(/\[CQ:image,[^\]]+\]/g, '[图片]');
-  }
-  text = text.trimStart();
-  return text;
+  const text = transformCQCodes(rawText, (cq) => {
+    switch (cq.type) {
+      case 'face': return '[表情]';
+      case 'video': return '[视频]';
+      case 'record': return '[语音]';
+      case 'forward': return '[聊天记录]';
+      case 'json': {
+        const desc = (cq.data.get('data') || '').match(/"desc"\s*:\s*"([^"]+)"/);
+        return desc ? `分享了文章《${desc[1]}》` : '[卡片消息]';
+      }
+      case 'at':
+      case 'reply':
+        return '';
+      case 'image':
+        // 非 cleanImage 时保留原始图片CQ码，由后续逻辑决定去留
+        return cleanImage ? '[图片]' : null;
+      default:
+        return null;
+    }
+  });
+  return text.trimStart();
 }
 
 
@@ -33,7 +43,7 @@ export function formatMessage(
     selfId, userId, nickName, rawMessage, replyMessage, cleanImage = false,
   } = params;
 
-  let isMentionMe = rawMessage.indexOf(`[CQ:at,qq=${selfId}]`) > -1;
+  let isMentionMe = hasAtUser(rawMessage, selfId);
 
   // 包含名字也算被提到
   if (rawMessage.includes('乃乃香') || rawMessage.includes('nonoka') || rawMessage.includes('nnk')) {
@@ -48,7 +58,7 @@ export function formatMessage(
       isMentionMe = true;
     }
     prefix = `[${nickName}]回复了${isBot ? '我' : replyMessage.sender.nickname || ''}的消息`;
-    const rtext = clean(replyMessage.message).replace(/\[CQ:image,[^\]]+\]/g, '[之前的图片]');
+    const rtext = transformCQCodes(clean(replyMessage.message), (cq) => (cq.type === 'image' ? '[之前的图片]' : null));
     prefix += `(${rtext.slice(0, 90)})，说：`;
   } else {
     prefix = `[${nickName}]${isMentionMe ? '提到我' : ''}说：`;
@@ -72,7 +82,7 @@ export function formatMessage(
 
   if (isSticker) {
     // 动画表情或小于60kb的图片视为表情，降成纯文本
-    const text = clean(rawMessage).replace(/\[CQ:image,[^\]]+\]/g, '[表情]').trim();
+    const text = transformCQCodes(clean(rawMessage), (cq) => (cq.type === 'image' ? '[表情]' : null)).trim();
     return {
       role: 'user', userId, isMentionMe, message: prefix + text,
     };

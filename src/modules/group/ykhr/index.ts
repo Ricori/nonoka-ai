@@ -1,7 +1,7 @@
 import { GroupMessageData } from '@/types/event';
 import NonokaModuleBase from '@/modules/base';
 import nnkbot from '@/core/nnkBot';
-import { extractCQCodes } from '@/utils/msgCode';
+import { extractCQCodes, hasCQCode } from '@/utils/msgCode';
 import { printError, printLog } from '@/utils/print';
 import { sleep } from '@/utils/function';
 import { getJobProgress, initGithubConfig, startTransfer } from './transfer';
@@ -19,7 +19,7 @@ export default class YkhrOnedriveModule extends NonokaModuleBase<GroupMessageDat
     if (groupId !== 930639183 && groupId !== 829349264) return false;
 
     // 检查文件消息
-    if (message.includes('[CQ:file,file=')) {
+    if (hasCQCode(message, 'file')) {
       if (message.includes('待轴') || message.includes('熟肉')) {
         return true;
       }

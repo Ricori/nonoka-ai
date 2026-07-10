@@ -25,7 +25,7 @@ type CQType =
   'poke' | 'forward' | 'node' | 'xml' | 'json' |
   'cardimage' | 'tts';
 
-class CQCode {
+export class CQCode {
   type: string;
 
   data: Map<string, string>;
@@ -64,21 +64,51 @@ class CQCode {
 }
 
 
+/** CQ码的统一匹配正则（本文件是CQ码解析的唯一入口，请勿在其他文件手写CQ正则） */
+const CQ_CODE_SOURCE = /\[CQ:([^,[\]]+)((?:,[^,=[\]]+=[^,[\]]*)*)\]/.source;
+
+/** 解析单个CQ码的参数串为 CQCode 对象 */
+function parseCQCode(type: string, dataStr: string) {
+  const data: Record<string, string> = {};
+  for (const kv of _.filter(dataStr.split(','))) {
+    const [key, ...value] = kv.split('=');
+    data[unescape(key)] = unescape(value.join('='));
+  }
+  return new CQCode(type, data);
+}
+
 /** string转CQ类数组 */
 export function extractCQCodes(str: string) {
-  const reg = /\[CQ:([^,[\]]+)((?:,[^,=[\]]+=[^,[\]]*)*)\]/g;
+  const reg = new RegExp(CQ_CODE_SOURCE, 'g');
   const result: CQCode[] = [];
   // eslint-disable-next-line no-cond-assign
   for (let match; (match = reg.exec(str));) {
-    const [, type, dataStr] = match;
-    const data: Record<string, string> = {};
-    for (const kv of _.filter(dataStr.split(','))) {
-      const [key, ...value] = kv.split('=');
-      data[unescape(key)] = unescape(value.join('='));
-    }
-    result.push(new CQCode(type, data));
+    result.push(parseCQCode(match[1], match[2]));
   }
   return result;
+}
+
+/** 逐个转换消息中的CQ码：handler 返回字符串则替换（空串即移除），返回 null/undefined 则保留原CQ码 */
+export function transformCQCodes(str: string, handler: (cq: CQCode) => string | null | undefined) {
+  return str.replace(new RegExp(CQ_CODE_SOURCE, 'g'), (raw, type: string, dataStr: string) => {
+    const replaced = handler(parseCQCode(type, dataStr));
+    return replaced == null ? raw : replaced;
+  });
+}
+
+/** 移除消息中的所有CQ码，仅保留纯文本 */
+export function removeCQCodes(str: string) {
+  return transformCQCodes(str, () => '');
+}
+
+/** 判断消息中是否含有指定类型的CQ码 */
+export function hasCQCode(str: string, type: CQType) {
+  return str.includes(`[CQ:${type}`);
+}
+
+/** 判断消息中是否@了指定QQ */
+export function hasAtUser(str: string, qq: number | string) {
+  return str.includes(`[CQ:at,qq=${qq}]`);
 }
 
 

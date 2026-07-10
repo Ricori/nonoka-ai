@@ -1,9 +1,9 @@
 import _ from 'lodash';
 import Axios from 'axios';
 import FormData from 'form-data';
-import { searchImageText } from './';
 import { escape, getImgCode, getVideoCode } from '@/utils/msgCode';
 import { printError } from '@/utils/print';
+import { searchImageText } from './text';
 /**
  * whatanime搜索
  */

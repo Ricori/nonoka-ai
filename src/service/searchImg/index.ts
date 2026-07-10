@@ -1,20 +1,14 @@
 import saucenaoSearch from './saucenao';
 import whatAnimeSearch from './whatanime';
 import ascii2dSearch from './ascii2d';
-
-export const searchImageText = {
-  error: '搜索图片发生错误，请主人等等再试试？', // 未知错误
-  whatAnimeToLarge: '图片过大，无法搜索动画',
-  whatAnimeLimit: '搜索动画超限制',
-  r18warn: '[R18 Waring]',
-};
+import { searchImageText } from './text';
 
 const searchImage = async (imgUrls: string[]) => {
   const resultMsgs = [] as string[];
   try {
     for (const imgUrl of imgUrls) {
       let saucenaoSuccess = false;
-      let ascii2dSuccess = false;
+      const ascii2dSuccess = false;
       // saucenao结果
       const result = await saucenaoSearch(imgUrl);
       saucenaoSuccess = result.success;

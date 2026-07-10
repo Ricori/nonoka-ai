@@ -30,6 +30,60 @@
     }
   },
   "rules": {
+    "import/no-restricted-paths": ["error", {
+      "zones": [
+        {
+          "target": "./src/service",
+          "from": "./src/core/nnkBot.ts",
+          "message": "service 层不要依赖 nnkBot 单例，配置请从 @/core/nnkConfig 获取"
+        },
+        {
+          "target": "./src/service",
+          "from": "./src/modules",
+          "message": "service 层不要依赖 modules"
+        },
+        {
+          "target": "./src/service",
+          "from": "./src/tasks",
+          "message": "service 层不要依赖 tasks"
+        },
+        {
+          "target": "./src/modules",
+          "from": "./src/tasks",
+          "message": "modules 不要依赖 tasks，公共逻辑请下沉到 service 层"
+        },
+        {
+          "target": "./src/core",
+          "from": "./src/tasks",
+          "message": "core 不要依赖 tasks"
+        },
+        {
+          "target": "./src/core",
+          "from": "./src/service",
+          "message": "core 不要依赖 service"
+        },
+        {
+          "target": "./src/utils",
+          "from": "./src/core",
+          "message": "utils 应保持零业务依赖"
+        },
+        {
+          "target": "./src/utils",
+          "from": "./src/modules",
+          "message": "utils 应保持零业务依赖"
+        },
+        {
+          "target": "./src/utils",
+          "from": "./src/service",
+          "message": "utils 应保持零业务依赖"
+        },
+        {
+          "target": "./src/utils",
+          "from": "./src/tasks",
+          "message": "utils 应保持零业务依赖"
+        }
+      ]
+    }],
     "@typescript-eslint/no-unused-vars": "off",
     "@typescript-eslint/no-use-before-define": "off",
     "@typescript-eslint/naming-convention": "off",
