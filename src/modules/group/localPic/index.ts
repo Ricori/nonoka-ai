@@ -2,7 +2,7 @@ import path from 'path';
 import { GroupMessageData } from '@/types/event';
 import NonokaModuleBase from '@/modules/base';
 import nnkbot from '@/core/nnkBot';
-import { getImgCode } from '@/utils/msgCode';
+import { getImgCode, removeCQCodes } from '@/utils/msgCode';
 import {
   getImgs, getReplyMsgId, hasImage, hasReply,
 } from '@/utils/function';
@@ -54,7 +54,7 @@ export default class LocalPictureModule extends NonokaModuleBase<GroupMessageDat
   /** 处理 /加图 命令 */
   private async handleAddPicture(message: string, groupId: number, userId: number) {
     // 解析关键词：/加图 xxx
-    const match = message.replace(/\[CQ:[^\]]+\]/g, '').match(/\/加图\s+(\S+)/);
+    const match = removeCQCodes(message).match(/\/加图\s+(\S+)/);
     if (!match) {
       nnkbot.sendGroupMsg(groupId, '格式：/加图 nsy名', userId);
       return;

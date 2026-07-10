@@ -4,6 +4,7 @@ import nnkStorage from '@/core/nnkStorage';
 import { printLog } from '@/utils/print';
 import getBiliDynamic from '@/service/bilibili/dynamic';
 import { getImgCode } from '@/utils/msgCode';
+import { NonokaJob } from '@/core/nnkSchedule';
 
 async function checkBiliDynamic(
   { uid, groupIds, myBiliCookie }: { uid: string, groupIds: number[], myBiliCookie: string },
@@ -70,12 +71,14 @@ const task = new AsyncTask('biliTask', async () => {
 });
 
 
-const BilibiliNewSharedJob = new SimpleIntervalJob({ seconds: 180 }, task, { id: 'bilibiliNewShared' });
-
-// 启动bot时将动态最新时间设置为现在，防止立即推送
-Object.keys(nnkbot.config.biliDynamicPush.config).forEach((uid: string) => {
-  nnkStorage.setBiliLastestDynamicTime(uid, new Date().getTime());
-});
-
+const BilibiliNewSharedJob: NonokaJob = {
+  job: new SimpleIntervalJob({ seconds: 180 }, task, { id: 'bilibiliNewShared' }),
+  // 启动bot时将动态最新时间设置为现在，防止立即推送
+  init: () => {
+    Object.keys(nnkbot.config.biliDynamicPush.config).forEach((uid: string) => {
+      nnkStorage.setBiliLastestDynamicTime(uid, new Date().getTime());
+    });
+  },
+};
 
 export default BilibiliNewSharedJob;

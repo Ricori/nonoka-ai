@@ -1,6 +1,6 @@
 import Axios from 'axios';
 import { printError } from '@/utils/print';
-import nnkbot from '@/core/nnkBot';
+import { botConfig } from '@/core/nnkConfig';
 
 export interface YoutubeLiveStatus {
   isLive: boolean;
@@ -10,7 +10,7 @@ export interface YoutubeLiveStatus {
 }
 
 export async function getYoutubeLiveStatus(channelName: string): Promise<YoutubeLiveStatus | null> {
-  const { baseUrl, apiKey } = nnkbot.config.nonokaService;
+  const { baseUrl, apiKey } = botConfig.nonokaService;
   const url = `${baseUrl}/youtube/live-status/${encodeURIComponent(channelName)}?apikey=${apiKey}`;
 
   try {

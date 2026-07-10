@@ -1,15 +1,16 @@
 import { GroupMessageData } from '@/types/event';
 import NonokaModuleBase from '@/modules/base';
 import nnkbot from '@/core/nnkBot';
-import { extractCQCodes } from '@/utils/msgCode';
+import { extractCQCodes, hasCQCode } from '@/utils/msgCode';
 import { printError, printLog } from '@/utils/print';
 import { sleep } from '@/utils/function';
 import { getJobProgress, initGithubConfig, startTransfer } from './transfer';
 
-initGithubConfig();
-
 export default class YkhrOnedriveModule extends NonokaModuleBase<GroupMessageData> {
   static NAME = 'YkhrOnedriveModule';
+
+  /** 启动时校验 github 配置，未配置则中止启动 */
+  static init = initGithubConfig;
 
   async checkConditions() {
     const { message, group_id: groupId } = this.data;
@@ -18,7 +19,7 @@ export default class YkhrOnedriveModule extends NonokaModuleBase<GroupMessageDat
     if (groupId !== 930639183 && groupId !== 829349264) return false;
 
     // 检查文件消息
-    if (message.includes('[CQ:file,file=')) {
+    if (hasCQCode(message, 'file')) {
       if (message.includes('待轴') || message.includes('熟肉')) {
         return true;
       }
@@ -95,10 +96,12 @@ export default class YkhrOnedriveModule extends NonokaModuleBase<GroupMessageDat
       if (!isCompleted) {
         printError(`[Github Transfer][${file}] Task timeout.`);
         nnkbot.sendGroupMsg(groupId, `“${file}”任务超时，请联系管理员。`, userId);
+        return;
       }
       if (!isSuccess) {
         printError(`[Github Transfer][${file}] Task failed.`);
         nnkbot.sendGroupMsg(groupId, `上传 “${file}”到 OneDrive 失败，请联系管理员。`, userId);
+        return;
       }
 
       nnkbot.sendGroupMsg(groupId, `“${file}”已成功上传至 OneDrive${parentPath} 目录。`, userId);

@@ -1,6 +1,6 @@
 import Axios from 'axios';
 import { printError } from '@/utils/print';
-import nnkbot from '@/core/nnkBot';
+import { botConfig } from '@/core/nnkConfig';
 import { translateText } from '@/service/llm';
 
 export interface TweetPost {
@@ -25,7 +25,7 @@ function getTimestampFromTweetId(id: string) {
 }
 
 export async function getLatestTweetsBatch(usernames: string[]) {
-  const nnkServiceConfig = nnkbot.config.nonokaService;
+  const nnkServiceConfig = botConfig.nonokaService;
   const nnkURL = `${nnkServiceConfig.baseUrl}/tweets/batch?apikey=${nnkServiceConfig.apiKey}`;
 
   try {

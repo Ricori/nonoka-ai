@@ -1,10 +1,10 @@
 import { printError } from '@/utils/print';
-import nnkbot from '@/core/nnkBot';
+import { botConfig } from '@/core/nnkConfig';
 import axios from 'axios';
 
 
 export async function getTTSAudio(text: string) {
-  const nnkServiceConfig = nnkbot.config.nonokaService;
+  const nnkServiceConfig = botConfig.nonokaService;
   const authorization = `Bearer ${nnkServiceConfig.apiKey}${nnkServiceConfig.apiKey}${nnkServiceConfig.apiKey}${nnkServiceConfig.apiKey}`;
 
   const url = `${nnkServiceConfig.baseUrl}/v1/audio/speech`;

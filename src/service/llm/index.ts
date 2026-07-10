@@ -1,5 +1,5 @@
 import Axios from 'axios';
-import nnkbot from '@/core/nnkBot';
+import { botConfig } from '@/core/nnkConfig';
 import { printError } from '@/utils/print';
 import type { FormattedMessage } from '@/types/message';
 
@@ -12,7 +12,7 @@ const REPLY_TIMEOUT = 90000;
 const COMMON_TIMEOUT = 50000;
 
 function getServiceUrl(path: string) {
-  const { baseUrl, apiKey } = nnkbot.config.nonokaService;
+  const { baseUrl, apiKey } = botConfig.nonokaService;
   return `${baseUrl}${path}?apikey=${apiKey}`;
 }
 

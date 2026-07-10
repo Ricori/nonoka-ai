@@ -2,33 +2,9 @@ import { SimpleIntervalJob, AsyncTask } from 'toad-scheduler';
 import nnkbot from '@/core/nnkBot';
 import nnkStorage from '@/core/nnkStorage';
 import { printError } from '@/utils/print';
-import { getImgCode, getVideoCode } from '@/utils/msgCode';
-import { getLatestTweetsBatch, getTweetPost } from '@/service/twitter/tweet';
-import { createScreenshot } from '@/service/twitter/screenshot';
-import nnkSchedule from '@/core/nnkSchedule';
-
-export async function createMsgFromTweetId(tweetId: string) {
-  // 获取详细信息
-  const tweetData = await getTweetPost(tweetId);
-  if (!tweetData) return;
-  // 生成推文图片
-  const dataUrl = await createScreenshot(tweetData);
-  if (!dataUrl) return;
-
-  const msgTextArr = [] as string[];
-  msgTextArr.push(getImgCode(dataUrl));
-  // 图片和视频最多各取3个
-  (tweetData.imgUrls ?? []).slice(0, 3).forEach((url) => msgTextArr.push(getImgCode(url)));
-  const videoTextArr = (tweetData.videoUrls ?? []).slice(0, 3).map((url) => getVideoCode(url));
-
-  msgTextArr.push(`推文链接：${tweetData.link}`);
-  const textMsg = msgTextArr.join('\n');
-  const videoMsg = videoTextArr.join('\n');
-  if (videoTextArr.length > 0) {
-    return [textMsg, videoMsg];
-  }
-  return [textMsg];
-}
+import { getLatestTweetsBatch } from '@/service/twitter/tweet';
+import { createMsgFromTweetId } from '@/service/twitter/message';
+import nnkSchedule, { NonokaJob } from '@/core/nnkSchedule';
 
 // 批量接口连续错误次数
 let consecutiveFailCount = 0;
@@ -131,12 +107,14 @@ const task = new AsyncTask('twitterTask', async () => {
 });
 
 
-const TwitterPushJob = new SimpleIntervalJob({ seconds: 240 }, task, { id: 'twitterPush', preventOverrun: true });
-
-// 启动bot时将用户推文最新时间设置为现在，防止立即推送
-Object.keys(nnkbot.config.tweetPush.config).forEach((username: string) => {
-  nnkStorage.setTwitterLastestTweetTime(username, new Date().getTime());
-});
-
+const TwitterPushJob: NonokaJob = {
+  job: new SimpleIntervalJob({ seconds: 240 }, task, { id: 'twitterPush', preventOverrun: true }),
+  // 启动bot时将用户推文最新时间设置为现在，防止立即推送
+  init: () => {
+    Object.keys(nnkbot.config.tweetPush.config).forEach((username: string) => {
+      nnkStorage.setTwitterLastestTweetTime(username, new Date().getTime());
+    });
+  },
+};
 
 export default TwitterPushJob;

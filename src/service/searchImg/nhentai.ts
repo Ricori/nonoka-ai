@@ -29,5 +29,4 @@ export default async function nhentaiSearch(name: string) {
     success: false,
     msg: '',
   };
-
 }

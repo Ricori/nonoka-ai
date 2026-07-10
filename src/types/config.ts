@@ -63,7 +63,7 @@ export interface BotConfig {
     /** 白名单群号，非空时启动白名单机制（只允许在白名单群发图） */
     whiteGroupIds: number[];
     /** 是否允许发送 R18 图片 */
-    enableR18: number,
+    enableR18: boolean,
   },
 }
 

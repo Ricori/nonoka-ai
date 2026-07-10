@@ -195,6 +195,30 @@ function formatTime(ts: number) {
   };
 }
 
+/** 常驻浏览器实例的启动 Promise，复用以避免每次截图都冷启动 Chromium */
+let browserPromise: Promise<any> | null = null;
+
+function launchBrowser() {
+  const promise = puppeteer.launch({ headless: true });
+  browserPromise = promise;
+  // 启动失败时清空引用，下次调用重新启动
+  promise.catch(() => {
+    if (browserPromise === promise) browserPromise = null;
+  });
+  return promise;
+}
+
+/** 获取常驻浏览器实例；实例崩溃或断开后自动重启 */
+async function getBrowser() {
+  const current = browserPromise;
+  if (!current) return launchBrowser();
+  const browser = await current.catch(() => null);
+  if (browser && browser.isConnected()) return browser;
+  // 实例不可用：若 await 期间没有其他调用触发过重启，则由本次调用重启
+  if (browserPromise === current) return launchBrowser();
+  return getBrowser();
+}
+
 export async function createScreenshot(data: TweetPost) {
   const { tags, text } = extractAndRemoveTags(data.tweetText);
   const { time, day } = formatTime(data.time);
@@ -210,15 +234,13 @@ export async function createScreenshot(data: TweetPost) {
     day,
   });
 
-  const browser = await puppeteer.launch({
-    headless: true,
-  });
+  const browser = await getBrowser();
   const page = await browser.newPage();
 
-  await page.setViewport({ width: 598, height: 1000, deviceScaleFactor: 2 });
-  await page.setContent(html, { waitUntil: 'networkidle0' });
-
   try {
+    await page.setViewport({ width: 598, height: 1000, deviceScaleFactor: 2 });
+    await page.setContent(html, { waitUntil: 'networkidle0' });
+
     const tweetElement = await page.$('.tweet');
     if (tweetElement) {
       const base64 = await tweetElement.screenshot({ encoding: 'base64' });
@@ -229,6 +251,7 @@ export async function createScreenshot(data: TweetPost) {
   } catch (err) {
     return undefined;
   } finally {
-    await browser.close();
+    // 只关闭页面，浏览器实例保留复用
+    await page.close().catch(() => {});
   }
 }

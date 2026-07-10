@@ -2,6 +2,7 @@ import WebSocketClient from 'websocket/lib/WebSocketClient';
 import { connection as Connection } from 'websocket';
 import { nanoid } from 'nanoid';
 import { printError, printLog } from '@/utils/print';
+import { hasAtUser } from '@/utils/msgCode';
 import { WSConfig } from '@/types/config';
 import { WSActionRes } from '@/types/ws';
 import { GroupMessageData, PrivateMessageData, RequestFirendMessageData } from '@/types/event';
@@ -115,7 +116,7 @@ export class NonokaWebsocket {
         } else if (data.message_type === 'group') {
           const selfId = data.self_id || 0;
           const msg = `${data.message || ''}`;
-          if (msg.indexOf(`[CQ:at,qq=${selfId}]`) > -1) {
+          if (hasAtUser(msg, selfId)) {
             this.eventFunction.groupAtMe(data as GroupMessageData);
           } else {
             this.eventFunction.group(data as GroupMessageData);
