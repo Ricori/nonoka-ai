@@ -1,6 +1,6 @@
-import { printError } from '@/utils/print';
 import Axios from 'axios';
 import FormData from 'form-data';
+import { printError } from './print';
 
 
 export async function imgTransferToImgbb(imgUrl: string) {

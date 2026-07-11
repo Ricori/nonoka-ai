@@ -1,37 +1,29 @@
 import { EventKind, ModuleContext, NonokaModule } from '@/core/nnkModule';
 import { GroupMessageData, SimpleMessageData } from '@/types/event';
 import nnkbot from '@/core/nnkBot';
-import {
-  calculateTypingDelay, getReplyMsgId, hasReply, sleep,
-} from '@/utils/function';
-import { getLLMReply, translateText } from '@/service/llm';
+import { BOT_NAME } from '@/constants';
+import { getReplyMsgId, hasReply } from '@/utils/function';
 import { printLog } from '@/utils/print';
-import { getTTSAudio } from '@/service/tts';
-import { getRecordCode } from '@/utils/msgCode';
 import messageStorage from '../storage/message';
-import { processStickerTag } from '../stickerMap';
-import { getAdditionalChance } from './relevance';
-import {
-  formatAssistantMessage, formatInitiativePromptMessage, formatMessage, formatUserMemoryPromptMessage,
-} from '../format';
 import userMemoryStorage from '../storage/userMemory';
+import { formatMessage } from '../format';
+import { sendSegmentedReply } from '../replySender';
+import { GroupReplyTrigger } from './trigger';
+import { generateGroupReply } from './generateReply';
 
 class GroupAIReplyModule extends NonokaModule<GroupMessageData> {
   readonly name = 'GroupAIReplyModule';
 
   readonly events: EventKind[] = ['group'];
 
-  /** 各群的回复防抖计时器（跨消息共享的群级状态，非单条消息状态） */
+  /** 主动插话触发策略（群级状态） */
+  private trigger = new GroupReplyTrigger();
+
+  /** 各群的回复防抖计时器 */
   private sessionTimers = new Map<number, NodeJS.Timeout | null>();
 
   /** 正在回复的群的锁 */
   private processingLocks = new Set<number>();
-
-  /** 记录每个群最后被@的时间 */
-  private lastAtTime = new Map<number, number>();
-
-  /** 记录每个群最后主动插话的时间 */
-  private lastInitiativeTime = new Map<number, number>();
 
   match(ctx: ModuleContext<GroupMessageData>) {
     if (!nnkbot.config.aiReply.enable) {
@@ -46,9 +38,6 @@ class GroupAIReplyModule extends NonokaModule<GroupMessageData> {
       message, user_id: userId, self_id: selfId, group_id: groupId, sender,
     } = ctx.data;
     const nickName = sender.nickname || `${userId}`;
-
-    let shouldReply = false; // 需要AI回复
-    let isInitiativeReply = false; // 是否是主动插话
 
     let replyMessage: SimpleMessageData | undefined;
     // 获取引用消息
@@ -71,101 +60,60 @@ class GroupAIReplyModule extends NonokaModule<GroupMessageData> {
     //  -------- 固定回复逻辑 --------
     // 1. 匹配"要不要xxx"时随机回复"要"或"不要"
     if (/要不要/.test(formattedMessage.message)) {
-      const reply = (Math.random() < 0.5) ? '乃乃香建议你 要！' : '乃乃香建议你 不要！';
+      const reply = (Math.random() < 0.5) ? `${BOT_NAME}建议你 要！` : `${BOT_NAME}建议你 不要！`;
       ctx.reply(reply);
       return;
     }
 
 
-    // -------- AI 回复逻辑 --------
+    // -------- AI 回复触发决策 --------
+    let shouldReply = false; // 需要AI回复
+    let isInitiativeReply = false; // 是否是主动插话
+
     if (formattedMessage.isMentionMe) {
       // 被提到了
       shouldReply = true;
-      this.lastAtTime.set(groupId, Date.now());
+      this.trigger.noteMention(groupId);
     }
 
     // 主动插话的群
     if (nnkbot.config.aiReply.initiativeList.includes(groupId)) {
-      const now = Date.now();
-      const lastAt = this.lastAtTime.get(groupId) || 0;
-      const lastInitiative = this.lastInitiativeTime.get(groupId) || 0;
-
-      // 被提到后100s内插话概率增大
-      const isRecentlyAt = now - lastAt < 100 * 1000;
-      // 附加概率
-      const additional = getAdditionalChance(formattedMessage.message);
-      // 概率
-      let triggerChance = (isRecentlyAt ? 0.12 : 0.015) + additional;
-
-      // 如果上次是主动插话且30s内没被提到，则开始衰减
-      if (lastInitiative > lastAt && now - lastAt >= 25 * 1000) {
-        const timeSinceAt = now - lastAt;
-        const decayPeriods = Math.floor(timeSinceAt / (25 * 1000));
-        // 每25s衰减，最低到1.5%
-        triggerChance = Math.max(0.015, triggerChance * (0.5 ** decayPeriods));
-      }
-
-
-      if (Math.random() < triggerChance) {
+      if (this.trigger.shouldInitiative(groupId, formattedMessage.message)) {
         shouldReply = true;
         isInitiativeReply = true;
-        this.lastInitiativeTime.set(groupId, now);
       }
 
       // 群友记忆系统
       userMemoryStorage.onMessage(userId, nickName, formattedMessage.message, formattedMessage.isMentionMe);
     }
 
-
     // 没有命中触发条件直接返回
     if (!shouldReply) return;
 
-    // 触发的话进入队列
+    // -------- 防抖调度 --------
     if (this.sessionTimers.has(groupId) && this.sessionTimers.get(groupId)) {
       clearTimeout(this.sessionTimers.get(groupId)!);
     }
 
     const timer = setTimeout(() => {
       this.sessionTimers.set(groupId, null);
-      this.processReplyQueue(groupId, isInitiativeReply);
-    }, 4500);
+      this.processReply(groupId, isInitiativeReply);
+    }, 3500);
     this.sessionTimers.set(groupId, timer);
   }
 
-  /** 生成并发送 AI 回复（同一群同时只处理一次，发送后延迟解锁控制频率） */
-  private async processReplyQueue(groupId: number, isInitiativeReply = false) {
+  /** 生成并发送 AI 回复（同一群同时只处理一次） */
+  private async processReply(groupId: number, isInitiativeReply = false) {
     if (this.processingLocks.has(groupId)) {
       return;
     }
     this.processingLocks.add(groupId);
 
     try {
-      const history = messageStorage.getGroupChatConversations(groupId);
-
-      // 调用 LLM 回复
-      let aiReplyText: string | null = null;
-
-      const recentUserIds = [...new Set(
-        history.slice(-10).filter((m) => m.role === 'user').map((m) => m.userId),
-      )];
-
-      const userMemoryContext = userMemoryStorage.getMemoryContext(recentUserIds);
-      const userMemoryPrompt = formatUserMemoryPromptMessage(userMemoryContext);
-
-      if (isInitiativeReply) {
-        // 主动发起会话的提示词
-        const initiativePrompt = formatInitiativePromptMessage();
-        aiReplyText = await getLLMReply([...history, ...(userMemoryPrompt ? [userMemoryPrompt] : []), initiativePrompt]);
-      } else {
-        aiReplyText = await getLLMReply([...history, ...(userMemoryPrompt ? [userMemoryPrompt] : [])]);
-      }
-
+      const aiReplyText = await generateGroupReply(groupId, isInitiativeReply);
       printLog(`[GroupAIReplyModule] Auto reply to ${groupId}: ${aiReplyText}`);
-      if (aiReplyText) {
-        // 记忆自己的回复
-        const aiReplyMessageParam = formatAssistantMessage(aiReplyText);
-        messageStorage.addGroupChatConversations(groupId, aiReplyMessageParam);
 
+      if (aiReplyText) {
         /* 语音回复
         if (Math.random() < 0.2) {
           // 语音发送
@@ -183,26 +131,11 @@ class GroupAIReplyModule extends NonokaModule<GroupMessageData> {
         }
         */
 
-        // 回复消息处理
-        const messages = processStickerTag(aiReplyText)
-          .split('||')
-          .map((msg) => msg.trim())
-          .filter((msg) => msg.length > 0);
         // 分段文字发送
-        for (let i = 0; i < messages.length; i++) {
-          const msg = messages[i].trim();
-          if (i > 0) {
-            const delay = calculateTypingDelay(msg);
-            await sleep(delay);
-          }
-          nnkbot.sendGroupMsg(groupId, msg);
-        }
+        await sendSegmentedReply(aiReplyText, (msg) => nnkbot.sendGroupMsg(groupId, msg));
       }
     } finally {
-      // 发完消息后延迟2.5秒再解锁，控制消息频率
-      setTimeout(() => {
-        this.processingLocks.delete(groupId);
-      }, 2500);
+      this.processingLocks.delete(groupId);
     }
   }
 }

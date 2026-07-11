@@ -1,3 +1,4 @@
+import nnkbot from '@/core/nnkBot';
 import { EventKind, ModuleContext, NonokaModule } from '@/core/nnkModule';
 import { GroupMessageData } from '@/types/event';
 import { extractCQCodes, hasCQCode } from '@/utils/msgCode';
@@ -25,8 +26,8 @@ class YkhrOnedriveModule extends NonokaModule<GroupMessageData, FileHit> {
   match(ctx: ModuleContext<GroupMessageData>): FileHit | false {
     const { message, group_id: groupId } = ctx.data;
 
-    // 只在 YKHR 群和测试群生效
-    if (groupId !== 930639183 && groupId !== 829349264) return false;
+    // 只在配置的群生效
+    if (!nnkbot.config.ykhrOneDrive.groupIds.includes(groupId)) return false;
 
     // 检查文件消息
     if (hasCQCode(message, 'file')) {

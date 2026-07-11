@@ -3,6 +3,7 @@ import nnkbot from '@/core/nnkBot';
 import nnkStorage from '@/core/nnkStorage';
 import { printLog } from '@/utils/print';
 import { getYoutubeLiveStatus } from '@/service/youtube/live';
+import { rewriteToCDN } from '@/service/cdn';
 import { getImgCode } from '@/utils/msgCode';
 import { NonokaJob } from '@/core/nnkSchedule';
 
@@ -21,7 +22,7 @@ async function checkYtLive(channelName: string, groupIds: number[]) {
 
     const msgTextArr = [] as string[];
     msgTextArr.push(`${status.title ?? '直播'} 开始了！`);
-    if (status.thumbnail) msgTextArr.push(getImgCode(status.thumbnail.replace('i.ytimg.com', 'cdn.nonoka.online/yt/img')));
+    if (status.thumbnail) msgTextArr.push(getImgCode(rewriteToCDN(status.thumbnail)));
     msgTextArr.push(`直播链接：https://www.youtube.com/watch?v=${status.videoId}`);
     msgTextArr.push(`实时翻译：https://live.nonoka.online/live?channel=@${channelName}`);
     const msg = msgTextArr.join('\n');

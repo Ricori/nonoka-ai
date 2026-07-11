@@ -49,7 +49,7 @@ class HPicModule extends NonokaModule<PrivateMessageData | GroupMessageData> {
     count = count > 10 ? 10 : count;
 
     // Get image urls
-    const API_URI = 'https://api.lolicon.app/setu/?apikey=170792005f99b428151719';
+    const API_URI = `https://api.lolicon.app/setu/?apikey=${nnkbot.config.apiKeys.lolicon}`;
     const ret = await Axios.get(`${API_URI}&r18=${level}&num=${count}&excludeAI=true`);
 
     if (ret.data?.code !== 0 || !ret.data?.data?.length) {

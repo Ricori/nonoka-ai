@@ -10,7 +10,12 @@
     "autoAddFriend": false,
     "nonokaService": {
       "baseUrl": "",
-      "apiKey": ""
+      "apiKey": "",
+      "cdnHost": ""
+    },
+    "apiKeys": {
+      "lolicon": "",
+      "saucenao": ""
     },
     "repeater": {
       "enable": true,
@@ -41,6 +46,9 @@
       "enable": true,
       "blackList": [],
       "initiativeList": []
+    },
+    "ykhrOneDrive": {
+      "groupIds": []
     },
     "hPic": {
       "enable": false,

@@ -31,11 +31,11 @@ function readConfigFile(): NonokaConfig {
 }
 
 /**
- * wsConfig（WebSocket 连接地址/端口）与 nonokaService（服务地址/密钥）不允许
- * 通过管理面板读取或修改，仅能直接编辑 config.json
+ * wsConfig（WebSocket 连接地址/端口）、nonokaService（服务地址/密钥）与 apiKeys（第三方密钥）
+ * 不允许通过管理面板读取或修改，仅能直接编辑 config.json
  */
 function redactConfig(config: NonokaConfig) {
-  const { nonokaService, ...restBotConfig } = config.botConfig;
+  const { nonokaService, apiKeys, ...restBotConfig } = config.botConfig;
   return { botConfig: restBotConfig };
 }
 
@@ -418,12 +418,18 @@ export class NonokaAdmin {
         return;
       }
 
-      // wsConfig 与 nonokaService 不允许通过管理面板读取或修改，无论提交了什么，都强制沿用磁盘上的现有值
+      // wsConfig、nonokaService 与 apiKeys 不允许通过管理面板读取或修改，无论提交了什么，都强制沿用磁盘上的现有值；
+      // 先展开 existing.botConfig，保留面板未管理的配置节（ykhrOneDrive 等），避免保存时被丢弃
       const existing = readConfigFile();
       const parsed = {
         ...submitted,
         wsConfig: existing.wsConfig,
-        botConfig: { ...submitted.botConfig, nonokaService: existing.botConfig.nonokaService },
+        botConfig: {
+          ...existing.botConfig,
+          ...submitted.botConfig,
+          nonokaService: existing.botConfig.nonokaService,
+          apiKeys: existing.botConfig.apiKeys,
+        },
       };
 
       if (!validateConfig(parsed)) {

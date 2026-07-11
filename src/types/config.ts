@@ -16,6 +16,15 @@ export interface BotConfig {
     baseUrl: string;
     /** API服务密钥 */
     apiKey: string;
+    /** 媒体反代 CDN 域名（如 cdn.nonoka.online），留空则不做域名替换 */
+    cdnHost: string;
+  };
+  /** 第三方服务 API 密钥（不通过管理面板读取或修改，直接编辑 config.json） */
+  apiKeys: {
+    /** lolicon 瑟图接口 */
+    lolicon: string;
+    /** saucenao 搜图接口 */
+    saucenao: string;
   };
   /** 复读机功能 */
   repeater: {
@@ -55,6 +64,11 @@ export interface BotConfig {
     blackList: number[];
     /** 主动发起对话的群名单 */
     initiativeList: number[];
+  },
+  /** YKHR OneDrive 文件转存功能 */
+  ykhrOneDrive: {
+    /** 生效的群号 */
+    groupIds: number[];
   },
   /** 瑟图功能 */
   hPic: {
