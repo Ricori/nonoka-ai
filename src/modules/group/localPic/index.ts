@@ -1,7 +1,7 @@
 import path from 'path';
-import { GroupMessageData } from '@/types/event';
-import NonokaModuleBase from '@/modules/base';
 import nnkbot from '@/core/nnkBot';
+import { EventKind, ModuleContext, NonokaModule } from '@/core/nnkModule';
+import { GroupMessageData } from '@/types/event';
 import { getImgCode, removeCQCodes } from '@/utils/msgCode';
 import {
   getImgs, getReplyMsgId, hasImage, hasReply,
@@ -11,61 +11,60 @@ import {
   downloadImage, getKeywords, getRandomPicture, PICTURE_DIR, refreshKeywords,
 } from './functions';
 
+/** match 命中时传递给 run 的数据 */
+type LocalPicHit =
+  | { action: 'add' }
+  | { action: 'send'; keyword: string };
 
-export default class LocalPictureModule extends NonokaModuleBase<GroupMessageData> {
-  static NAME = 'LocalPictureModule';
+class LocalPictureModule extends NonokaModule<GroupMessageData, LocalPicHit> {
+  readonly name = 'LocalPictureModule';
 
-  private isAddCommand = false;
+  readonly events: EventKind[] = ['group'];
 
-  private matchedKeyword: string | null = null;
-
-  async checkConditions() {
-    const { message } = this.data;
+  match(ctx: ModuleContext<GroupMessageData>): LocalPicHit | false {
+    const { message } = ctx.data;
 
     // 检查是否是 /加图 命令
     if (message.includes('/加图')) {
-      this.isAddCommand = true;
-      return true;
+      return { action: 'add' };
     }
 
     // 检查消息是否是已注册的关键词
     const keywords = getKeywords();
     for (const keyword of keywords) {
       if (message === keyword) {
-        this.matchedKeyword = keyword;
-        return true;
+        return { action: 'send', keyword };
       }
     }
 
     return false;
   }
 
-
-  async run() {
-    const { message, group_id: groupId, user_id: userId } = this.data;
-
-    if (this.isAddCommand) {
-      await this.handleAddPicture(message, groupId, userId);
-    } else if (this.matchedKeyword) {
-      await this.handleSendPicture(groupId);
+  async run(ctx: ModuleContext<GroupMessageData>, hit: LocalPicHit) {
+    if (hit.action === 'add') {
+      await this.handleAddPicture(ctx);
+    } else {
+      this.handleSendPicture(ctx, hit.keyword);
     }
   }
 
   /** 处理 /加图 命令 */
-  private async handleAddPicture(message: string, groupId: number, userId: number) {
+  private async handleAddPicture(ctx: ModuleContext<GroupMessageData>) {
+    const { message, user_id: userId } = ctx.data;
+
     // 解析关键词：/加图 xxx
     const match = removeCQCodes(message).match(/\/加图\s+(\S+)/);
     if (!match) {
-      nnkbot.sendGroupMsg(groupId, '格式：/加图 nsy名', userId);
+      ctx.reply('格式：/加图 nsy名', { at: true });
       return;
     }
     const keyword = match[1];
     if (keyword.length < 2) {
-      nnkbot.sendGroupMsg(groupId, '关键词至少需要两个字', userId);
+      ctx.reply('关键词至少需要两个字', { at: true });
       return;
     }
     if (keyword.includes('龙')) {
-      nnkbot.sendGroupMsg(groupId, '该关键词不允许使用', userId);
+      ctx.reply('该关键词不允许使用', { at: true });
       return;
     }
 
@@ -98,19 +97,21 @@ export default class LocalPictureModule extends NonokaModuleBase<GroupMessageDat
 
     if (successCount > 0) {
       refreshKeywords();
-      nnkbot.sendGroupMsg(groupId, `已存储 ${successCount} 张图片到「${keyword}」`);
+      ctx.reply(`已存储 ${successCount} 张图片到「${keyword}」`);
       printLog(`[LocalPic] ${userId} 添加了 ${successCount} 张图片到 ${keyword}`);
     } else {
-      nnkbot.sendGroupMsg(groupId, '图片保存失败，请重试', userId);
+      ctx.reply('图片保存失败，请重试', { at: true });
     }
   }
 
   /** 处理关键词匹配，发送随机图片 */
-  private async handleSendPicture(groupId: number) {
-    const picPath = getRandomPicture(this.matchedKeyword!);
+  private handleSendPicture(ctx: ModuleContext<GroupMessageData>, keyword: string) {
+    const picPath = getRandomPicture(keyword);
     if (!picPath) return;
 
     const fileUri = `file:///${picPath.replace(/\\/g, '/')}`;
-    nnkbot.sendGroupMsg(groupId, getImgCode(fileUri));
+    ctx.reply(getImgCode(fileUri));
   }
 }
+
+export default new LocalPictureModule();

@@ -1,18 +1,19 @@
-import { RequestFirendMessageData } from '@/types/event';
 import nnkbot from '@/core/nnkBot';
 import nnkStorage from '@/core/nnkStorage';
-import NonokaModuleBase from '../base';
+import { EventKind, ModuleContext, NonokaModule } from '@/core/nnkModule';
+import { RequestFirendMessageData } from '@/types/event';
 
-export default class RequestFriendModule extends NonokaModuleBase<RequestFirendMessageData> {
-  static NAME = 'RequestFriendModule';
+class RequestFriendModule extends NonokaModule<RequestFirendMessageData> {
+  readonly name = 'RequestFriendModule';
 
-  async checkConditions() {
+  readonly events: EventKind[] = ['request'];
+
+  match() {
     return true;
   }
 
-  async run() {
-    const userId = this.data.user_id;
-    const { flag } = this.data;
+  run(ctx: ModuleContext<RequestFirendMessageData>) {
+    const { user_id: userId, flag } = ctx.data;
     if (nnkbot.config.autoAddFriend || nnkStorage.getIsInToBeAddedList(userId)) {
       // Agree to be added as a friend
       nnkbot.setFriendAddRequest(flag, true);
@@ -28,8 +29,7 @@ export default class RequestFriendModule extends NonokaModuleBase<RequestFirendM
       // Refuse to be friends
       nnkbot.setFriendAddRequest(flag, false);
     }
-
-    // finish
-    this.finished = true;
   }
 }
+
+export default new RequestFriendModule();

@@ -1,8 +1,8 @@
 import axios, { AxiosError } from 'axios';
 import path from 'path';
 import fs from 'fs';
-import { printError, printLog } from '../../../utils/print';
-import { sleep } from '../../../utils/function';
+import { printError, printLog } from '@/utils/print';
+import { sleep } from '@/utils/function';
 
 interface TransferInputs {
   file_url: string;

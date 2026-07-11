@@ -1,23 +1,25 @@
-import { PrivateMessageData } from '@/types/event';
-import NonokaModuleBase from '@/modules/base';
 import nnkbot from '@/core/nnkBot';
+import { EventKind, ModuleContext, NonokaModule } from '@/core/nnkModule';
+import { PrivateMessageData } from '@/types/event';
 import { getLLMReply } from '@/service/llm';
 import { calculateTypingDelay, sleep } from '@/utils/function';
 import messageStorage from '../storage/message';
 import { processStickerTag } from '../stickerMap';
 import { formatAssistantMessage, formatMessage } from '../format';
 
-export default class PrivateAIReplyModule extends NonokaModuleBase<PrivateMessageData> {
-  static NAME = 'PrivateAIReplyModule';
+class PrivateAIReplyModule extends NonokaModule<PrivateMessageData> {
+  readonly name = 'PrivateAIReplyModule';
 
-  async checkConditions() {
+  readonly events: EventKind[] = ['private'];
+
+  match() {
     return nnkbot.config.aiReply.enable;
   }
 
-  async run() {
+  async run(ctx: ModuleContext<PrivateMessageData>) {
     const {
       message, user_id: userId, self_id: selfId, sender,
-    } = this.data;
+    } = ctx.data;
     const nickName = sender.nickname || `${userId}`;
 
     const formattedMessage = formatMessage({
@@ -47,10 +49,10 @@ export default class PrivateAIReplyModule extends NonokaModuleBase<PrivateMessag
           const delay = calculateTypingDelay(msg);
           await sleep(delay);
         }
-        nnkbot.sendPrivateMsg(userId, msg);
+        ctx.reply(msg);
       }
     }
   }
 }
 
-
+export default new PrivateAIReplyModule();

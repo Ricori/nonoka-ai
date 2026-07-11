@@ -2,7 +2,6 @@ import WebSocketClient from 'websocket/lib/WebSocketClient';
 import { connection as Connection } from 'websocket';
 import { nanoid } from 'nanoid';
 import { printError, printLog } from '@/utils/print';
-import { hasAtUser } from '@/utils/msgCode';
 import { WSConfig } from '@/types/config';
 import { WSActionRes } from '@/types/ws';
 import { GroupMessageData, PrivateMessageData, RequestFirendMessageData } from '@/types/event';
@@ -17,7 +16,6 @@ const WebSocketState = {
 interface EventFunction {
   friend?: (data: RequestFirendMessageData) => Promise<void>
   private?: (data: PrivateMessageData) => Promise<void>
-  groupAtMe?: (data: GroupMessageData) => Promise<void>
   group?: (data: GroupMessageData) => Promise<void>
 }
 
@@ -40,7 +38,6 @@ export class NonokaWebsocket {
   private eventFunction = {
     friend: async (_data: RequestFirendMessageData) => { },
     private: async (_data: PrivateMessageData) => { },
-    groupAtMe: async (_data: GroupMessageData) => { },
     group: async (_data: GroupMessageData) => { },
   };
 
@@ -114,13 +111,7 @@ export class NonokaWebsocket {
         if (data.message_type === 'private') {
           this.eventFunction.private(data as PrivateMessageData);
         } else if (data.message_type === 'group') {
-          const selfId = data.self_id || 0;
-          const msg = `${data.message || ''}`;
-          if (hasAtUser(msg, selfId)) {
-            this.eventFunction.groupAtMe(data as GroupMessageData);
-          } else {
-            this.eventFunction.group(data as GroupMessageData);
-          }
+          this.eventFunction.group(data as GroupMessageData);
         }
         break;
       default:

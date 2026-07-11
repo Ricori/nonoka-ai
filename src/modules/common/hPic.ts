@@ -1,9 +1,9 @@
-import { GroupMessageData, PrivateMessageData } from '@/types/event';
-import NonokaModuleBase from '@/modules/base';
+import Axios from 'axios';
 import nnkbot from '@/core/nnkBot';
+import { EventKind, ModuleContext, NonokaModule } from '@/core/nnkModule';
+import { GroupMessageData, PrivateMessageData } from '@/types/event';
 import { sleep } from '@/utils/function';
 import { getImgCode } from '@/utils/msgCode';
-import Axios from 'axios';
 import { printError } from '@/utils/print';
 
 
@@ -16,28 +16,23 @@ enum HPicLevel {
   MIX = 2,
 }
 
-export default class HPicModule extends NonokaModuleBase<PrivateMessageData | GroupMessageData> {
-  static NAME = 'HPicModule';
+class HPicModule extends NonokaModule<PrivateMessageData | GroupMessageData> {
+  readonly name = 'HPicModule';
 
-  async checkConditions() {
+  readonly events: EventKind[] = ['private', 'group'];
+
+  match(ctx: ModuleContext<PrivateMessageData | GroupMessageData>) {
     if (!nnkbot.config.hPic.enable) return false;
-    const { message, message_type: messageType } = this.data;
-    const groupId = messageType === 'group' ? this.data.group_id : undefined;
+    const { message } = ctx.data;
     const { whiteGroupIds } = nnkbot.config.hPic;
     // Check if the group is in the whitelist or if it's a private message
+    const groupId = ctx.data.message_type === 'group' ? ctx.data.group_id : undefined;
     const hasPermissions = !groupId || whiteGroupIds.includes(groupId);
-    if (hasPermissions) {
-      const exec = /((要|发|份|点|张)大?(色|h|瑟|涩)图)/.exec(message);
-      if (exec !== null) {
-        return true;
-      }
-    }
-    return false;
+    return hasPermissions && /((要|发|份|点|张)大?(色|h|瑟|涩)图)/.test(message);
   }
 
-  async run() {
-    const { message, user_id: userId, message_type: messageType } = this.data;
-    const groupId = messageType === 'group' ? this.data.group_id : undefined;
+  async run(ctx: ModuleContext<PrivateMessageData | GroupMessageData>) {
+    const { message } = ctx.data;
     const { enableR18 } = nnkbot.config.hPic;
 
     let level = HPicLevel.SAFE;
@@ -59,7 +54,7 @@ export default class HPicModule extends NonokaModuleBase<PrivateMessageData | Gr
 
     if (ret.data?.code !== 0 || !ret.data?.data?.length) {
       printError('[GetHpic API] getHpic API Error.');
-      nnkbot.sendMsg(groupId, userId, '色图库炸了！');
+      ctx.reply('色图库炸了！');
       return;
     }
 
@@ -67,9 +62,10 @@ export default class HPicModule extends NonokaModuleBase<PrivateMessageData | Gr
 
     // Send images
     for (const url of imgUrls) {
-      const msg = getImgCode(url);
-      nnkbot.sendMsg(groupId, userId, msg);
+      ctx.reply(getImgCode(url));
       await sleep(4000);
     }
   }
 }
+
+export default new HPicModule();
