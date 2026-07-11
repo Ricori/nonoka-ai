@@ -12,7 +12,7 @@ class NonokaStorage {
   private repeaterData = new Map<number, RepeaterLog>();
 
   /** 各平台最新内容时间 (key: "bili-{uid}" | "twitter-{username}") */
-  private lastestSNSUpdateTime = new Map<string, number>();
+  private latestSNSUpdateTime = new Map<string, number>();
 
   /** 各 YouTube 频道上次已推送直播的 videoId，用于判断是否是新的一场直播 */
   private ytLastPushedVideoId = new Map<string, string>();
@@ -57,23 +57,23 @@ class NonokaStorage {
   }
 
   /** 设置某up最新动态时间 */
-  setBiliLastestDynamicTime(uid: string, time: number) {
-    this.lastestSNSUpdateTime.set(`bili-${uid}`, time);
+  setBiliLatestDynamicTime(uid: string, time: number) {
+    this.latestSNSUpdateTime.set(`bili-${uid}`, time);
   }
 
   /** 获取某up最新动态时间 */
-  getBiliLastestDynamicTime(uid: string) {
-    return this.lastestSNSUpdateTime.get(`bili-${uid}`) ?? 0;
+  getBiliLatestDynamicTime(uid: string) {
+    return this.latestSNSUpdateTime.get(`bili-${uid}`) ?? 0;
   }
 
   /** 设置某推特用户最新推文时间 */
-  setTwitterLastestTweetTime(username: string, time: number) {
-    this.lastestSNSUpdateTime.set(`twitter-${username}`, time);
+  setTwitterLatestTweetTime(username: string, time: number) {
+    this.latestSNSUpdateTime.set(`twitter-${username}`, time);
   }
 
   /** 获取某推特用户最新推文时间 */
-  getTwitterLastestTweetTime(username: string) {
-    return this.lastestSNSUpdateTime.get(`twitter-${username}`) ?? 0;
+  getTwitterLatestTweetTime(username: string) {
+    return this.latestSNSUpdateTime.get(`twitter-${username}`) ?? 0;
   }
 
   /** 设置某 YouTube 频道上次已推送直播的 videoId */

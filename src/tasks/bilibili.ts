@@ -13,9 +13,9 @@ async function checkBiliDynamic(
     const dyData = await getBiliDynamic(uid, myBiliCookie);
     if (dyData) {
       const newTime = dyData.pubDate;
-      const lastestTime = nnkStorage.getBiliLastestDynamicTime(uid);
-      if (newTime > lastestTime) {
-        nnkStorage.setBiliLastestDynamicTime(uid, newTime);
+      const latestTime = nnkStorage.getBiliLatestDynamicTime(uid);
+      if (newTime > latestTime) {
+        nnkStorage.setBiliLatestDynamicTime(uid, newTime);
 
         if (uid === '629994228' && dyData.description.includes('今日速览')) {
           if (dyData.images[0]) {
@@ -76,7 +76,7 @@ const BilibiliNewSharedJob: NonokaJob = {
   // 启动bot时将动态最新时间设置为现在，防止立即推送
   init: () => {
     Object.keys(nnkbot.config.biliDynamicPush.config).forEach((uid: string) => {
-      nnkStorage.setBiliLastestDynamicTime(uid, new Date().getTime());
+      nnkStorage.setBiliLatestDynamicTime(uid, new Date().getTime());
     });
   },
 };
