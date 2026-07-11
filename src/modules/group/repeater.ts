@@ -1,28 +1,34 @@
-
-import { GroupMessageData } from '@/types/event';
-import NonokaModuleBase from '@/modules/base';
 import nnkbot from '@/core/nnkBot';
 import nnkStorage from '@/core/nnkStorage';
+import {
+  EventKind, FlowResult, ModuleContext, NonokaModule,
+} from '@/core/nnkModule';
+import { GroupMessageData } from '@/types/event';
 
-export default class RepeaterModule extends NonokaModuleBase<GroupMessageData> {
-  static NAME = 'RepeaterModule';
+class RepeaterModule extends NonokaModule<GroupMessageData> {
+  readonly name = 'RepeaterModule';
 
-  async checkConditions() {
+  readonly events: EventKind[] = ['group:plain'];
+
+  match(ctx: ModuleContext<GroupMessageData>) {
     if (!nnkbot.config.repeater.enable) return false;
-    const { message, group_id: groupId } = this.data;
-    if (nnkbot.config.repeater.blackList.includes(groupId)) return false;
+    return !nnkbot.config.repeater.blackList.includes(ctx.data.group_id);
+  }
 
+  run(ctx: ModuleContext<GroupMessageData>): FlowResult {
+    const { message, group_id: groupId } = ctx.data;
+
+    // 复读计数（放在 run 而非 match，避免副作用受链上前序模块影响）
     const times = nnkStorage.saveRepeaterLog(groupId, message);
     const randomValue = Math.floor(Math.random() * 2);
-    return times >= 2 + randomValue;
-  }
+    if (times < 2 + randomValue) return 'continue';
 
-  async run() {
-    const { message, group_id: groupId } = this.data;
     nnkStorage.setRepeaterDone(groupId);
-
     setTimeout(() => {
-      nnkbot.sendGroupMsg(groupId, message);
+      ctx.reply(message);
     }, 1200);
+    return 'stop';
   }
 }
+
+export default new RepeaterModule();

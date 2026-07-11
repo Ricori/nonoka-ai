@@ -2,7 +2,6 @@
 import nnkbot from '@/core/nnkBot';
 import nnkSchedule from '@/core/nnkSchedule';
 import { NonokaAdmin } from '@/core/nnkAdmin';
-import BilibiliNewSharedJob from '@/tasks/bilibili';
 import SystemCleanupJob from '@/tasks/clean';
 import TwitterPushJob from '@/tasks/twitter';
 import YtLivePushJob from '@/tasks/youtube';
@@ -17,37 +16,31 @@ import RepeaterModule from '@/modules/group/repeater';
 import LocalPictureModule from '@/modules/group/localPic';
 import GroupCommandModule from '@/modules/group/command';
 
-// 加载好友请求模块
-nnkbot.loadModule('request', [RequestFriendModule]);
-
-// 加载私聊消息模块
-nnkbot.loadModule('private', [
+// 加载模块
+nnkbot.loadModules([
+  // 好友请求处理 (request)
+  RequestFriendModule,
+  // 管理员命令 (private)
   AdminModule,
-  ImageSearchModule,
-  HPicModule,
-  PrivateAIReplyModule,
-]);
-
-// 加载群@消息模块
-nnkbot.loadModule('groupAt', [
+  // 群命令 (group)
   GroupCommandModule,
+  // 搜图 (private | group:at)
   ImageSearchModule,
+  // 图库 (group)
   LocalPictureModule,
-  HPicModule,
-  GroupAIReplyModule,
-]);
-
-// 加载群消息默认监听
-nnkbot.loadModule('group', [
-  GroupCommandModule,
-  LocalPictureModule,
+  // YKHR (group:plain)
   YkhrOnedriveModule,
+  // 涩图 (private | group)
   HPicModule,
+  // 复读机 (group:plain)
   RepeaterModule,
+  // 私聊 AI 回复 (private)
+  PrivateAIReplyModule,
+  // 群聊 AI 回复 (group)
   GroupAIReplyModule,
 ]);
 
-// 加载定时任务（任务定义了 init 的会在加载时自动执行）
+// 加载定时任务
 nnkSchedule.loadJob([
   SystemCleanupJob,
   // BilibiliNewSharedJob,
