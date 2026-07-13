@@ -85,11 +85,6 @@ class NonokaStorage {
   getYtLastPushedVideoId(channelName: string) {
     return this.ytLastPushedVideoId.get(channelName);
   }
-
-  /** 清除某 YouTube 频道的推送记录（下播后调用，以便下次开播能重新推送） */
-  clearYtLastPushedVideoId(channelName: string) {
-    this.ytLastPushedVideoId.delete(channelName);
-  }
 }
 
 export default new NonokaStorage();
