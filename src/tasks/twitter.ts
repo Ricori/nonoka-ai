@@ -14,7 +14,7 @@ const MAX_TWEET_FAIL = 3;
 const tweetFailRecords = new Map<string, { tweetId: string, failCount: number }>();
 
 async function pushLatestTweetForUser(username: string, groupIds: number[], latestTweet: { tweetId: string, time: number }) {
-  const preTime = nnkStorage.getTwitterLastestTweetTime(username);
+  const preTime = nnkStorage.getTwitterLatestTweetTime(username);
   // 没有新推特
   if (latestTweet.time <= preTime) return;
 
@@ -29,7 +29,7 @@ async function pushLatestTweetForUser(username: string, groupIds: number[], late
     const failCount = (record?.tweetId === latestTweet.tweetId ? record.failCount : 0) + 1;
     if (failCount >= MAX_TWEET_FAIL) {
       tweetFailRecords.delete(username);
-      nnkStorage.setTwitterLastestTweetTime(username, latestTweet.time);
+      nnkStorage.setTwitterLatestTweetTime(username, latestTweet.time);
       printError(`[twitterTask] Give up tweet ${latestTweet.tweetId} (${username}) after ${failCount} fails.`);
     } else {
       tweetFailRecords.set(username, { tweetId: latestTweet.tweetId, failCount });
@@ -39,7 +39,7 @@ async function pushLatestTweetForUser(username: string, groupIds: number[], late
 
   // 推送成功后再更新最新推特时间
   tweetFailRecords.delete(username);
-  nnkStorage.setTwitterLastestTweetTime(username, latestTweet.time);
+  nnkStorage.setTwitterLatestTweetTime(username, latestTweet.time);
   groupIds.forEach((groupId) => {
     msgArr.forEach((msg) => nnkbot.sendGroupMsg(groupId, msg));
   });
@@ -112,7 +112,7 @@ const TwitterPushJob: NonokaJob = {
   // 启动bot时将用户推文最新时间设置为现在，防止立即推送
   init: () => {
     Object.keys(nnkbot.config.tweetPush.config).forEach((username: string) => {
-      nnkStorage.setTwitterLastestTweetTime(username, new Date().getTime());
+      nnkStorage.setTwitterLatestTweetTime(username, new Date().getTime());
     });
   },
 };

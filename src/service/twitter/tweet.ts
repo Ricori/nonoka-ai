@@ -2,6 +2,7 @@ import Axios from 'axios';
 import { printError } from '@/utils/print';
 import { botConfig } from '@/core/nnkConfig';
 import { translateText } from '@/service/llm';
+import { rewriteToCDN } from '@/service/cdn';
 
 export interface TweetPost {
   username: string;
@@ -75,7 +76,7 @@ async function resolveData(apiResponse: Record<any, any>, translate: boolean) {
   const tweetURL: string = apiResponse.tweetURL || '';
   const time: number = new Date(apiResponse.date || '').getTime();
   const userScreenName: string = apiResponse.user_screen_name || '';
-  const userProfile: string = apiResponse.user_profile_image_url?.replace('pbs.twimg.com', 'cdn.nonoka.online/x/pbs') || '';
+  const userProfile: string = rewriteToCDN(apiResponse.user_profile_image_url || '');
   const imgUrls: string[] = [];
   const videoUrls: string[] = [];
 
@@ -89,12 +90,10 @@ async function resolveData(apiResponse: Record<any, any>, translate: boolean) {
   }
 
   for (const media of apiResponse.media_extended ?? []) {
-    let mediaUrl: string = media.url || '';
+    const mediaUrl = rewriteToCDN(media.url || '');
     if (media.type === 'image') {
-      mediaUrl = mediaUrl.replace('pbs.twimg.com', 'cdn.nonoka.online/x/pbs');
       imgUrls.push(mediaUrl);
     } else if (media.type === 'video' || media.type === 'gif') {
-      mediaUrl = mediaUrl.replace('video.twimg.com', 'cdn.nonoka.online/x/video');
       videoUrls.push(mediaUrl);
     }
   }

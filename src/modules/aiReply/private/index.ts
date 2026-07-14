@@ -2,9 +2,8 @@ import nnkbot from '@/core/nnkBot';
 import { EventKind, ModuleContext, NonokaModule } from '@/core/nnkModule';
 import { PrivateMessageData } from '@/types/event';
 import { getLLMReply } from '@/service/llm';
-import { calculateTypingDelay, sleep } from '@/utils/function';
 import messageStorage from '../storage/message';
-import { processStickerTag } from '../stickerMap';
+import { sendSegmentedReply } from '../replySender';
 import { formatAssistantMessage, formatMessage } from '../format';
 
 class PrivateAIReplyModule extends NonokaModule<PrivateMessageData> {
@@ -38,19 +37,8 @@ class PrivateAIReplyModule extends NonokaModule<PrivateMessageData> {
       const aiReplyMessageParam = formatAssistantMessage(aiReplyText);
       messageStorage.addPrivateChatMessage(userId, aiReplyMessageParam);
 
-      const messages = processStickerTag(aiReplyText)
-        .split('||')
-        .map((msg) => msg.trim())
-        .filter((msg) => msg.length > 0);
-
-      for (let i = 0; i < messages.length; i++) {
-        const msg = messages[i].trim();
-        if (i > 0) {
-          const delay = calculateTypingDelay(msg);
-          await sleep(delay);
-        }
-        ctx.reply(msg);
-      }
+      // 分段文字发送
+      await sendSegmentedReply(aiReplyText, (msg) => ctx.reply(msg));
     }
   }
 }

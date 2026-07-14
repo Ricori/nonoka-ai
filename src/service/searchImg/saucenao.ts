@@ -1,5 +1,6 @@
 import Axios from 'axios';
 import Cheerio from 'cheerio';
+import { botConfig } from '@/core/nnkConfig';
 import { getImgCode } from '@/utils/msgCode';
 import { printError } from '@/utils/print';
 
@@ -172,7 +173,7 @@ export default async function saucenaoSearch(imgURL: string) {
  */
 function saucenaoFetch(imgURL: string) {
   const params = {
-    api_key: '16abeee27bd15d00da11a60c92e7429321b8284e',
+    api_key: botConfig.apiKeys.saucenao,
     db: SnDBEnum.ALL, // 搜索的DB
     output_type: 2, // API返回方式，2=JSON
     numres: 1, // 结果数量

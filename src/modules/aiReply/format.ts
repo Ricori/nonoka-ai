@@ -1,5 +1,6 @@
 import { getImgs, hasImage } from '@/utils/function';
 import { hasAtUser, transformCQCodes } from '@/utils/msgCode';
+import { BOT_NAME_ALIASES } from '@/constants';
 import { SimpleMessageData } from '@/types/event';
 import { FormattedMessage } from '../../types/message';
 
@@ -45,8 +46,8 @@ export function formatMessage(
 
   let isMentionMe = hasAtUser(rawMessage, selfId);
 
-  // 包含名字也算被提到
-  if (rawMessage.includes('乃乃香') || rawMessage.includes('nonoka') || rawMessage.includes('nnk')) {
+  // 包含名字（或别名）也算被提到
+  if (BOT_NAME_ALIASES.some((alias) => rawMessage.includes(alias))) {
     isMentionMe = true;
   }
 
