@@ -58,7 +58,7 @@ const task = new AsyncTask('ytLiveTask', async () => {
 });
 
 const YtLivePushJob: NonokaJob = {
-  job: new SimpleIntervalJob({ seconds: 80 }, task, { id: 'ytLivePush', preventOverrun: true }),
+  job: new SimpleIntervalJob({ seconds: 120 }, task, { id: 'ytLivePush', preventOverrun: true }),
 };
 
 export default YtLivePushJob;
