@@ -14,8 +14,11 @@ class NonokaStorage {
   /** 各平台最新内容时间 (key: "bili-{uid}" | "twitter-{username}") */
   private latestSNSUpdateTime = new Map<string, number>();
 
-  /** 各 YouTube 频道上次已推送直播的 videoId，用于判断是否是新的一场直播 */
-  private ytLastPushedVideoId = new Map<string, string>();
+  /** 各 YouTube 频道已推送过的直播 videoId 历史 */
+  private ytPushedVideoIds = new Map<string, string[]>();
+
+  /** 每个频道保留的已推送 videoId 数量上限 */
+  private static readonly YT_PUSHED_HISTORY_LIMIT = 10;
 
 
   /** 新增好友到待添加名单 */
@@ -76,14 +79,18 @@ class NonokaStorage {
     return this.latestSNSUpdateTime.get(`twitter-${username}`) ?? 0;
   }
 
-  /** 设置某 YouTube 频道上次已推送直播的 videoId */
-  setYtLastPushedVideoId(channelName: string, videoId: string) {
-    this.ytLastPushedVideoId.set(channelName, videoId);
+  /** 检查某 YouTube 频道是否已推送过该 videoId */
+  hasYtPushedVideoId(channelName: string, videoId: string) {
+    return this.ytPushedVideoIds.get(channelName)?.includes(videoId) ?? false;
   }
 
-  /** 获取某 YouTube 频道上次已推送直播的 videoId */
-  getYtLastPushedVideoId(channelName: string) {
-    return this.ytLastPushedVideoId.get(channelName);
+  /** 记录某 YouTube 频道已推送的 videoId */
+  addYtPushedVideoId(channelName: string, videoId: string) {
+    const list = this.ytPushedVideoIds.get(channelName) ?? [];
+    if (list.includes(videoId)) return;
+    list.push(videoId);
+    if (list.length > NonokaStorage.YT_PUSHED_HISTORY_LIMIT) list.shift();
+    this.ytPushedVideoIds.set(channelName, list);
   }
 }
 
