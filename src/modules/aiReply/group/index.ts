@@ -118,21 +118,9 @@ class GroupAIReplyModule extends NonokaModule<GroupMessageData> {
       printLog(`[GroupAIReplyModule] Auto reply to ${groupId}: ${aiReplyText}`);
 
       if (aiReplyText) {
-        // 语音回复（仅在开启语音回复的群）
-        if (isVoiceEnabled(groupId)) {
-          const message = aiReplyText.replace(/\[表情:\s*(.*?)\]/g, '').replace('||', '').trim();
-          if (message) {
-            // 翻译或 TTS 失败时只跳过语音，不影响后面的文字回复
-            const jpText = await translateText(message, 'jp');
-            if (jpText) {
-              printLog(`[GroupAIReplyModule] Auto reply audio: ${jpText}`);
-              const base64 = await getTTSAudio(jpText);
-              if (base64) {
-                const recordCode = getRecordCode(base64);
-                nnkbot.sendGroupMsg(groupId, recordCode);
-              }
-            }
-          }
+        // 开启语音回复的群优先发语音，成功后不再发文字，避免同样内容重复出现
+        if (isVoiceEnabled(groupId) && await this.trySendVoice(groupId, aiReplyText)) {
+          return;
         }
 
         // 分段文字发送
@@ -141,6 +129,26 @@ class GroupAIReplyModule extends NonokaModule<GroupMessageData> {
     } finally {
       this.processingLocks.delete(groupId);
     }
+  }
+
+  /** 尝试把回复转成语音发送，任一环节失败都返回 false 由调用方回退到文字 */
+  private async trySendVoice(groupId: number, aiReplyText: string) {
+    // 去掉表情标签，分段符换成空格以免相邻两段粘连
+    const message = aiReplyText
+      .replace(/\[表情:\s*(.*?)\]/g, '')
+      .replace(/\|\|/g, ' ')
+      .trim();
+    if (!message) return false;
+
+    const jpText = await translateText(message, 'jp');
+    if (!jpText) return false;
+
+    printLog(`[GroupAIReplyModule] Auto reply audio: ${jpText}`);
+    const base64 = await getTTSAudio(jpText);
+    if (!base64) return false;
+
+    nnkbot.sendGroupMsg(groupId, getRecordCode(base64));
+    return true;
   }
 }
 
