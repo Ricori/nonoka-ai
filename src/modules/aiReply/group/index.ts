@@ -4,12 +4,16 @@ import nnkbot from '@/core/nnkBot';
 import { BOT_NAME } from '@/constants';
 import { getReplyMsgId, hasReply } from '@/utils/function';
 import { printLog } from '@/utils/print';
+import { getRecordCode } from '@/utils/msgCode';
+import { getTTSAudio } from '@/service/tts';
+import { translateText } from '@/service/llm';
 import messageStorage from '../storage/message';
 import userMemoryStorage from '../storage/userMemory';
 import { formatMessage } from '../format';
 import { sendSegmentedReply } from '../replySender';
 import { GroupReplyTrigger } from './trigger';
 import { generateGroupReply } from './generateReply';
+import { isVoiceEnabled } from './voiceState';
 
 class GroupAIReplyModule extends NonokaModule<GroupMessageData> {
   readonly name = 'GroupAIReplyModule';
@@ -114,9 +118,8 @@ class GroupAIReplyModule extends NonokaModule<GroupMessageData> {
       printLog(`[GroupAIReplyModule] Auto reply to ${groupId}: ${aiReplyText}`);
 
       if (aiReplyText) {
-        /* 语音回复
-        if (Math.random() < 0.2) {
-          // 语音发送
+        // 语音回复（仅在开启语音回复的群）
+        if (isVoiceEnabled(groupId)) {
           const message = aiReplyText.replace(/\[表情:\s*(.*?)\]/g, '').replace('||', '').trim();
           if (message) {
             const jpText = await translateText(message, 'jp');
@@ -129,7 +132,6 @@ class GroupAIReplyModule extends NonokaModule<GroupMessageData> {
             }
           }
         }
-        */
 
         // 分段文字发送
         await sendSegmentedReply(aiReplyText, (msg) => nnkbot.sendGroupMsg(groupId, msg));

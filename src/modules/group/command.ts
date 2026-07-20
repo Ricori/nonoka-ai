@@ -7,9 +7,11 @@ import { getRecordCode } from '@/utils/msgCode';
 import { getTTSAudio } from '@/service/tts';
 import { translateText } from '@/service/llm';
 import { printError } from '@/utils/print';
+import { isVoiceEnabled, setVoiceEnabled } from '../aiReply/group/voiceState';
 
 type GroupCommand =
   | { cmd: 'initiative'; action?: string }
+  | { cmd: 'voice'; action?: string }
   | { cmd: 'pushTweet'; tweetId: string }
   | { cmd: 'tts'; text: string };
 
@@ -25,11 +27,15 @@ class GroupCommandModule extends NonokaModule<GroupMessageData, GroupCommand> {
     const initiativeMatch = message.match(/^\/initiative(?:\s+(on|off))?$/);
     if (initiativeMatch) return { cmd: 'initiative', action: initiativeMatch[1] };
 
-    // 2. Push twitter - /p <tweetUrl or tweetId>
+    // 2. Voice reply control - /voice on|off
+    const voiceMatch = message.match(/^\/voice(?:\s+(on|off))?$/);
+    if (voiceMatch) return { cmd: 'voice', action: voiceMatch[1] };
+
+    // 3. Push twitter - /p <tweetUrl or tweetId>
     const pushTweetMatch = message.match(/^\/p\s+(?:\S*status\/)?(\d+)$/);
     if (pushTweetMatch) return { cmd: 'pushTweet', tweetId: pushTweetMatch[1] };
 
-    // 3. tts - /tts <text>
+    // 4. tts - /tts <text>
     const ttsMatch = message.match(/^\/tts\s+(.+)$/);
     if (ttsMatch) return { cmd: 'tts', text: ttsMatch[1] };
 
@@ -40,6 +46,10 @@ class GroupCommandModule extends NonokaModule<GroupMessageData, GroupCommand> {
     switch (hit.cmd) {
       case 'initiative':
         this.handleInitiative(ctx, hit.action);
+        return;
+
+      case 'voice':
+        this.handleVoice(ctx, hit.action);
         return;
 
       case 'pushTweet': {
@@ -90,6 +100,20 @@ class GroupCommandModule extends NonokaModule<GroupMessageData, GroupCommand> {
     } catch (e) {
       printError(`[GroupCommandModule] 保存 initiative 配置失败: ${e}`);
     }
+  }
+
+  /** 语音回复开关（仅内存态，重启后失效，不落盘） */
+  private handleVoice(ctx: ModuleContext<GroupMessageData>, action?: string) {
+    const { group_id: groupId } = ctx.data;
+
+    if (!action) {
+      ctx.reply(`[NonokaSystem] 当前群语音回复状态: ${isVoiceEnabled(groupId) ? '开启' : '关闭'}`);
+      return;
+    }
+
+    const enable = action === 'on';
+    setVoiceEnabled(groupId, enable);
+    ctx.reply(`[NonokaSystem] 已${enable ? '开启' : '关闭'}语音回复`);
   }
 
   /** 文字转语音（非日文先翻译为日文） */
