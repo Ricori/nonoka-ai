@@ -19,6 +19,7 @@ export async function getTTSAudio(text: string) {
           'Content-Type': 'application/json',
         },
         responseType: 'arraybuffer',
+        timeout: 60000,
       },
     );
     const base64Audio = Buffer.from(response.data).toString('base64');

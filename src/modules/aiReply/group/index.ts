@@ -122,13 +122,15 @@ class GroupAIReplyModule extends NonokaModule<GroupMessageData> {
         if (isVoiceEnabled(groupId)) {
           const message = aiReplyText.replace(/\[表情:\s*(.*?)\]/g, '').replace('||', '').trim();
           if (message) {
+            // 翻译或 TTS 失败时只跳过语音，不影响后面的文字回复
             const jpText = await translateText(message, 'jp');
-            if (!jpText) return;
-            printLog(`[GroupAIReplyModule] Auto reply audio: ${jpText}`);
-            const base64 = await getTTSAudio(jpText);
-            if (base64) {
-              const recordCode = getRecordCode(base64);
-              nnkbot.sendGroupMsg(groupId, recordCode);
+            if (jpText) {
+              printLog(`[GroupAIReplyModule] Auto reply audio: ${jpText}`);
+              const base64 = await getTTSAudio(jpText);
+              if (base64) {
+                const recordCode = getRecordCode(base64);
+                nnkbot.sendGroupMsg(groupId, recordCode);
+              }
             }
           }
         }
