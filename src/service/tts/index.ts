@@ -5,7 +5,7 @@ import axios from 'axios';
 
 export async function getTTSAudio(text: string) {
   const nnkServiceConfig = botConfig.nonokaService;
-  const authorization = `Bearer ${nnkServiceConfig.apiKey}${nnkServiceConfig.apiKey}${nnkServiceConfig.apiKey}${nnkServiceConfig.apiKey}`;
+  const authorization = `Bearer ${nnkServiceConfig.apiKey}`;
 
   const url = `${nnkServiceConfig.baseUrl}/v1/audio/speech`;
 
