@@ -29,7 +29,7 @@ nnkbot.loadModules([
   // 图库 (group)
   LocalPictureModule,
   // YKHR (group:plain)
-  YkhrOnedriveModule,
+  // YkhrOnedriveModule,
   // 涩图 (private | group)
   HPicModule,
   // 复读机 (group:plain)
