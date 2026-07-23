@@ -12,6 +12,8 @@ interface UserMemoryFile {
   nickName: string;
   /** 最多 6 条核心特征短句 */
   traits: string[];
+  /** 与 bot 的关系 / 群内身份，人工维护，LLM 总结绝不覆盖 */
+  relations?: string[];
   updatedAt: number;
 }
 
@@ -28,8 +30,8 @@ class UserMemoryStorage {
   /** 待总结的消息缓冲 (key: userId) */
   private pendingBuffers = new Map<number, PendingBuffer>();
 
-  /** 内存缓存，避免频繁读盘 (key: userId) */
-  private cache = new Map<number, UserMemoryFile>();
+  /** 内存缓存，避免频繁读盘 (key: userId)，按文件 mtime + 体积判断是否过期 */
+  private cache = new Map<number, { data: UserMemoryFile, mtimeMs: number, size: number }>();
 
   constructor() {
     this.ensureDir();
@@ -73,18 +75,28 @@ class UserMemoryStorage {
     }
   }
 
+  /** 读档案；relations 允许人工直接改 JSON，所以文件变了就重新读盘 */
   private loadUser(userId: number): UserMemoryFile | null {
-    if (this.cache.has(userId)) {
-      return this.cache.get(userId)!;
+    const stat = fs.statSync(this.getFilePath(userId), { throwIfNoEntry: false });
+    if (!stat) {
+      this.cache.delete(userId);
+      return null;
     }
+
+    const cached = this.cache.get(userId);
+    if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+      return cached.data;
+    }
+
     const data = this.loadUserFromDisk(userId);
-    if (data) this.cache.set(userId, data);
+    if (data) this.cache.set(userId, { data, mtimeMs: stat.mtimeMs, size: stat.size });
     return data;
   }
 
   private saveUser(data: UserMemoryFile) {
-    this.cache.set(data.userId, data);
     fs.writeFileSync(this.getFilePath(data.userId), JSON.stringify(data, null, 2), 'utf-8');
+    // 让缓存失效，下次读盘时连同 mtime 一起刷新
+    this.cache.delete(data.userId);
   }
 
   /**
@@ -126,10 +138,13 @@ class UserMemoryStorage {
       const newTraits = await summarizeUserTraits(nickName, messages, existingTraits);
 
       if (newTraits.length > 0) {
+        // relations 是人工维护的，整对象覆盖写时必须原样带上
+        const relations = this.loadUser(userId)?.relations;
         this.saveUser({
           userId,
           nickName,
           traits: newTraits.slice(0, MAX_TRAITS),
+          ...(relations?.length ? { relations } : {}),
           updatedAt: Date.now(),
         });
         printLog(`[UserMemory] 用户 ${nickName}(${userId}) 特征更新: [${newTraits.join(', ')}]`);
@@ -148,18 +163,27 @@ class UserMemoryStorage {
 
   /**
    * 根据当前对话中出现的用户ID，生成注入 prompt 的记忆上下文。
-   * 仅返回有记忆数据的用户。
+   * 仅返回有记忆数据的用户；关系是人工确认过的，排在 LLM 总结的印象之前。
    */
   getMemoryContext(userIds: number[]): string {
-    const parts: string[] = [];
-    for (const userId of userIds) {
-      const data = this.loadUser(userId);
-      if (data && data.traits.length > 0) {
-        parts.push(`[${data.nickName}] ${data.traits.join('、')}`);
-      }
+    return userIds
+      .map((userId) => this.formatMemoryLine(userId))
+      .filter((line): line is string => line !== null)
+      .join('\n');
+  }
+
+  /** 单个群友的一行档案文本，没有可用内容时返回 null */
+  private formatMemoryLine(userId: number): string | null {
+    const data = this.loadUser(userId);
+    if (!data) return null;
+
+    if (!data.relations?.length) {
+      // 绝大多数群友没有关系条目，维持原格式，不平白改动 prompt
+      return data.traits.length ? `[${data.nickName}] ${data.traits.join('、')}` : null;
     }
-    if (parts.length === 0) return '';
-    return parts.join('\n');
+
+    const traits = data.traits.length ? `｜印象：${data.traits.join('、')}` : '';
+    return `[${data.nickName}] 关系：${data.relations.join('；')}${traits}`;
   }
 }
 

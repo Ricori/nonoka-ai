@@ -11,4 +11,8 @@ export interface FormattedMessage {
   imgUrl?: string;
   /** 是否添加缓存标记 */
   cacheControl?: boolean;
+  /** bot 群聊发言的触发方式：true 为主动插话，false 为被 @ / 被回复后的应答 */
+  initiative?: boolean;
+  /** 主动插话当次实际使用的触发概率 */
+  chance?: number;
 }

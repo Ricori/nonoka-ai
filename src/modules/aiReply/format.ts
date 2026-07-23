@@ -99,12 +99,19 @@ export function formatMessage(
 }
 
 
-export function formatAssistantMessage(text: string): FormattedMessage {
+export function formatAssistantMessage(
+  text: string,
+  initiative?: boolean,
+  chance?: number | null,
+): FormattedMessage {
   return {
     role: 'assistant',
     userId: 0,
     isMentionMe: false,
     message: text,
+    ...(initiative === undefined ? {} : { initiative }),
+    // 概率是浮点乘出来的，截断到 4 位免得日志里全是长尾数
+    ...(chance === undefined || chance === null ? {} : { chance: Number(chance.toFixed(4)) }),
   };
 }
 

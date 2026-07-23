@@ -6,6 +6,15 @@ import { printError } from '@/utils/print';
 const MAX_CHAT_HISTORY_COUNT = 10;
 const CHAT_BACKUP_DIR = path.resolve('data/memory/chat');
 
+/**
+ * bot 自己的发言在备份日志里额外标注触发方式：`[0][主动 0.12]内容` / `[0][被动]内容`，
+ * 供离线统计区分主动插话与被 @ 应答
+ */
+function backupTriggerMark(msg: FormattedMessage): string {
+  if (msg.initiative === undefined) return '';
+  return msg.initiative ? `[主动 ${msg.chance ?? 0}]` : '[被动]';
+}
+
 class MessageStorage {
   /** 私聊消息对话记录 (key: qq) */
   private privateChatConversations = new Map<number, FormattedMessage[]>();
@@ -27,7 +36,7 @@ class MessageStorage {
     try {
       const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
       const file = path.join(CHAT_BACKUP_DIR, `${groupId}_${date}.txt`);
-      const lines = `${newMessages.map((m) => `[${m.userId}]${m.message}`).join('\n')}\n`;
+      const lines = `${newMessages.map((m) => `[${m.userId}]${backupTriggerMark(m)}${m.message}`).join('\n')}\n`;
       await fs.promises.appendFile(file, lines, 'utf-8');
     } catch (e) {
       // 写入失败则把这批消息计回待备份数量，下次备份时重试

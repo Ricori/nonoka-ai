@@ -1,3 +1,5 @@
+import groupProfileStorage from '../storage/groupProfile';
+
 /** 被 @ 后提升插话概率的时间窗口 */
 const RECENT_AT_WINDOW = 100 * 1000;
 /** 主动插话概率的衰减周期 */
@@ -33,8 +35,9 @@ export class GroupReplyTrigger {
     this.lastAtTime.set(groupId, Date.now());
   }
 
-  /** 主动插话判定：按概率决定是否插话，命中则记录本次插话时间并返回 true */
-  shouldInitiative(groupId: number, message: string): boolean {
+  /** 主动插话判定：按概率决定是否插话。
+   *  命中则记录本次插话时间并返回实际使用的概率（供统计留档），未命中返回 null */
+  rollInitiative(groupId: number, message: string): number | null {
     const now = Date.now();
     const lastAt = this.lastAtTime.get(groupId) || 0;
     const lastInitiative = this.lastInitiativeTime.get(groupId) || 0;
@@ -52,10 +55,14 @@ export class GroupReplyTrigger {
       triggerChance = Math.max(BASE_CHANCE, triggerChance * (0.5 ** decayPeriods));
     }
 
+    // 分群缩放：各群活跃度与对 bot 的接受度差别很大，用群档案里的系数整体调节
+    const { chanceScale } = groupProfileStorage.getProfile(groupId);
+    triggerChance = Math.min(1, triggerChance * chanceScale);
+
     if (Math.random() < triggerChance) {
       this.lastInitiativeTime.set(groupId, now);
-      return true;
+      return triggerChance;
     }
-    return false;
+    return null;
   }
 }

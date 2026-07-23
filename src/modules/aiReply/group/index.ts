@@ -73,6 +73,7 @@ class GroupAIReplyModule extends NonokaModule<GroupMessageData> {
     // -------- AI 回复触发决策 --------
     let shouldReply = false; // 需要AI回复
     let isInitiativeReply = false; // 是否是主动插话
+    let initiativeChance: number | null = null; // 本次主动插话实际使用的概率
 
     if (formattedMessage.isMentionMe) {
       // 被提到了
@@ -82,9 +83,11 @@ class GroupAIReplyModule extends NonokaModule<GroupMessageData> {
 
     // 主动插话的群
     if (nnkbot.config.aiReply.initiativeList.includes(groupId)) {
-      if (this.trigger.shouldInitiative(groupId, formattedMessage.message)) {
+      const chance = this.trigger.rollInitiative(groupId, formattedMessage.message);
+      if (chance !== null) {
         shouldReply = true;
         isInitiativeReply = true;
+        initiativeChance = chance;
       }
 
       // 群友记忆系统
@@ -101,20 +104,20 @@ class GroupAIReplyModule extends NonokaModule<GroupMessageData> {
 
     const timer = setTimeout(() => {
       this.sessionTimers.set(groupId, null);
-      this.processReply(groupId, isInitiativeReply);
+      this.processReply(groupId, isInitiativeReply, initiativeChance);
     }, 3500);
     this.sessionTimers.set(groupId, timer);
   }
 
   /** 生成并发送 AI 回复（同一群同时只处理一次） */
-  private async processReply(groupId: number, isInitiativeReply = false) {
+  private async processReply(groupId: number, isInitiativeReply = false, initiativeChance: number | null = null) {
     if (this.processingLocks.has(groupId)) {
       return;
     }
     this.processingLocks.add(groupId);
 
     try {
-      const aiReplyText = await generateGroupReply(groupId, isInitiativeReply);
+      const aiReplyText = await generateGroupReply(groupId, isInitiativeReply, initiativeChance);
       printLog(`[GroupAIReplyModule] Auto reply to ${groupId}: ${aiReplyText}`);
 
       if (aiReplyText) {
