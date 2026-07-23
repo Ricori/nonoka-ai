@@ -86,8 +86,6 @@ async function checkLatestTweet() {
 }
 
 
-// 服务端一轮抓取的周期，与其定时任务保持一致
-const ROUND_INTERVAL = 240 * 1000;
 // 落库完成后再等这么久才取，留出落库写入与网络的余量，防止读到上一轮的旧数据
 const ALIGN_DELAY = 30 * 1000;
 // 取数失败时的重试间隔（毫秒）：不必等满一轮
@@ -97,14 +95,10 @@ const TICK_SECONDS = 10;
 // 下次允许取数的时间戳；0 表示尚未对齐，启动后首个节拍立即取一次完成对齐
 let nextRunAt = 0;
 
-function isNight() {
-  const hour = new Date().getHours();
-  // 深夜 1--7 点跳过一轮，等效 8 分钟一次
-  return hour >= 1 && hour < 7;
-}
-
 /**
  * 按服务端上报的落库节奏排下一次取数。
+ *
+ * 节奏完全跟随服务端（含其深夜降频），这边不再自行判断时段
  * nextReadyInS 缺省表示本次请求失败，退化成固定间隔重试，下次成功时自动重新对齐。
  */
 function scheduleNext(nextReadyInS?: number) {
@@ -112,8 +106,7 @@ function scheduleNext(nextReadyInS?: number) {
     nextRunAt = Date.now() + RETRY_INTERVAL;
     return;
   }
-  const skip = isNight() ? ROUND_INTERVAL : 0;
-  nextRunAt = Date.now() + nextReadyInS * 1000 + ALIGN_DELAY + skip;
+  nextRunAt = Date.now() + nextReadyInS * 1000 + ALIGN_DELAY;
 }
 
 const task = new AsyncTask('twitterTask', async () => {
