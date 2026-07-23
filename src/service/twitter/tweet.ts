@@ -25,32 +25,59 @@ function getTimestampFromTweetId(id: string) {
   return Number(BigInt(id) / 4194304n) + 1288834974657;
 }
 
-export async function getLatestTweetsBatch(usernames: string[]) {
-  const nnkServiceConfig = botConfig.nonokaService;
-  const nnkURL = `${nnkServiceConfig.baseUrl}/tweets/batch?apikey=${nnkServiceConfig.apiKey}`;
+export interface LatestTweetInfo {
+  username: string;
+  tweetId: string;
+  time: number;
+}
+
+export interface CachedTweetsResult {
+  /** 服务端最近一轮落库的最新推文 */
+  tweets: LatestTweetInfo[];
+  /** 距服务端下一轮数据落库还有多少秒，用于对齐下次取数时间 */
+  nextReadyInS: number;
+  /** 本轮数据的落库时刻（服务端 epoch 秒） */
+  updatedAt: number | null;
+}
+
+// 服务端未给出就绪时间时的兜底间隔
+const DEFAULT_NEXT_READY_S = 240;
+
+/**
+ * 读取服务端定时任务落库的最新推文。
+ */
+export async function getCachedLatestTweets(usernames: string[]): Promise<CachedTweetsResult | null> {
+  const { baseUrl, apiKey } = botConfig.nonokaService;
+  const nnkURL = `${baseUrl}/tweets/cached?apikey=${apiKey}`;
 
   try {
-    const ret = await Axios.post(nnkURL, { usernames }, { timeout: 52000 });
-    if (!ret.data) return null;
-    if (ret.data.success && ret.data.users?.length > 0) {
-      const userList = ret.data.users as { username: string, latest?: string | null }[];
-      return userList.map((user) => {
-        const tweetId = getTweetId(user.latest);
-        if (!tweetId) {
-          printError(`[NonokaService] getLatestTweetsBatch API: ${user.username} scrape failed.`);
-          return null;
+    const { data } = await Axios.post(nnkURL, { usernames }, { timeout: 15000 });
+    if (!data?.success) return null;
+
+    const userList = (data.users ?? []) as { username: string, latest?: string | null, error?: string }[];
+    const tweets = userList.map((user) => {
+      const tweetId = getTweetId(user.latest);
+      if (!tweetId) {
+        // 该用户本轮抓取失败，定时任务下一轮会重试，跳过即可
+        if (data.updated_at) {
+          printError(`[NonokaService] getCachedLatestTweets: ${user.username} unavailable. ${user.error ?? ''}`);
         }
-        const time = getTimestampFromTweetId(tweetId);
-        return {
-          username: user.username,
-          tweetId,
-          time,
-        };
-      }).filter((item): item is NonNullable<typeof item> => item !== null);
-    }
-    return null;
+        return null;
+      }
+      return {
+        username: user.username,
+        tweetId,
+        time: getTimestampFromTweetId(tweetId),
+      };
+    }).filter((item): item is LatestTweetInfo => item !== null);
+
+    return {
+      tweets,
+      nextReadyInS: typeof data.next_ready_in_s === 'number' ? data.next_ready_in_s : DEFAULT_NEXT_READY_S,
+      updatedAt: data.updated_at ?? null,
+    };
   } catch (e) {
-    printError(`[NonokaService] getLatestTweetsBatch API Error: ${e.message}`);
+    printError(`[NonokaService] getCachedLatestTweets API Error: ${e.message}`);
   }
   return null;
 }

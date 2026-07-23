@@ -2,7 +2,7 @@ import { SimpleIntervalJob, AsyncTask } from 'toad-scheduler';
 import nnkbot from '@/core/nnkBot';
 import nnkStorage from '@/core/nnkStorage';
 import { printError } from '@/utils/print';
-import { getLatestTweetsBatch } from '@/service/twitter/tweet';
+import { getCachedLatestTweets } from '@/service/twitter/tweet';
 import { createMsgFromTweetId } from '@/service/twitter/message';
 import nnkSchedule, { NonokaJob } from '@/core/nnkSchedule';
 
@@ -48,9 +48,13 @@ async function pushLatestTweetForUser(username: string, groupIds: number[], late
 async function checkLatestTweet() {
   const groupConfig = nnkbot.config.tweetPush.config;
   const twitterUsernames = Object.keys(groupConfig);
-  const latestTweetsBatch = await getLatestTweetsBatch(twitterUsernames);
+  const result = await getCachedLatestTweets(twitterUsernames);
 
-  if (!latestTweetsBatch || latestTweetsBatch.length === 0) {
+  // 无论成败都先排下一次，避免中途异常导致任务停摆
+  scheduleNext(result?.nextReadyInS);
+
+  // updatedAt 为空说明服务端还没跑完第一轮，不算失败
+  if (!result || (result.tweets.length === 0 && result.updatedAt)) {
     consecutiveFailCount++;
     if (consecutiveFailCount === 10) {
       // 连续错误10次，停止任务
@@ -64,11 +68,12 @@ async function checkLatestTweet() {
     }
     return;
   }
+  if (!result.updatedAt) return;
   consecutiveFailCount = 0;
 
   for (const u of twitterUsernames) {
     const groupIds = groupConfig[u];
-    const latestTweet = latestTweetsBatch.find((item) => item.username === u);
+    const latestTweet = result.tweets.find((item) => item.username === u);
     if (Array.isArray(groupIds) && latestTweet) {
       try {
         await pushLatestTweetForUser(u, groupIds, latestTweet);
@@ -81,23 +86,38 @@ async function checkLatestTweet() {
 }
 
 
-// 白天执行间隔（毫秒）
-const DAY_INTERVAL = 240 * 1000;
-// 深夜（服务器时间 1--7 点）执行间隔（毫秒）
-const NIGHT_INTERVAL = 480 * 1000;
-// 上一次实际执行的时间戳
-let lastRunTime = 0;
+// 服务端一轮抓取的周期，与其定时任务保持一致
+const ROUND_INTERVAL = 240 * 1000;
+// 落库完成后再等这么久才取，留出落库写入与网络的余量，防止读到上一轮的旧数据
+const ALIGN_DELAY = 30 * 1000;
+// 取数失败时的重试间隔（毫秒）：不必等满一轮
+const RETRY_INTERVAL = 60 * 1000;
+// 轮询节拍（秒）：只做时间判断，真正取数由 nextRunAt 控制
+const TICK_SECONDS = 10;
+// 下次允许取数的时间戳；0 表示尚未对齐，启动后首个节拍立即取一次完成对齐
+let nextRunAt = 0;
 
-function getCurrentInterval() {
+function isNight() {
   const hour = new Date().getHours();
-  // 深夜 1--7 点改为 10 分钟一次
-  return hour >= 1 && hour < 7 ? NIGHT_INTERVAL : DAY_INTERVAL;
+  // 深夜 1--7 点跳过一轮，等效 8 分钟一次
+  return hour >= 1 && hour < 7;
+}
+
+/**
+ * 按服务端上报的落库节奏排下一次取数。
+ * nextReadyInS 缺省表示本次请求失败，退化成固定间隔重试，下次成功时自动重新对齐。
+ */
+function scheduleNext(nextReadyInS?: number) {
+  if (nextReadyInS === undefined) {
+    nextRunAt = Date.now() + RETRY_INTERVAL;
+    return;
+  }
+  const skip = isNight() ? ROUND_INTERVAL : 0;
+  nextRunAt = Date.now() + nextReadyInS * 1000 + ALIGN_DELAY + skip;
 }
 
 const task = new AsyncTask('twitterTask', async () => {
-  const now = Date.now();
-  if (now - lastRunTime < getCurrentInterval()) return;
-  lastRunTime = now;
+  if (Date.now() < nextRunAt) return;
 
   const botIsConnect = nnkbot.getIsBotConnecting();
   if (!botIsConnect) return;
@@ -108,9 +128,10 @@ const task = new AsyncTask('twitterTask', async () => {
 
 
 const TwitterPushJob: NonokaJob = {
-  job: new SimpleIntervalJob({ seconds: 240 }, task, { id: 'twitterPush', preventOverrun: true }),
+  job: new SimpleIntervalJob({ seconds: TICK_SECONDS }, task, { id: 'twitterPush', preventOverrun: true }),
   // 启动bot时将用户推文最新时间设置为现在，防止立即推送
   init: () => {
+    nextRunAt = 0;
     Object.keys(nnkbot.config.tweetPush.config).forEach((username: string) => {
       nnkStorage.setTwitterLatestTweetTime(username, new Date().getTime());
     });
