@@ -87,7 +87,7 @@ async function checkLatestTweet() {
 
 
 // 落库完成后再等这么久才取，留出落库写入与网络的余量，防止读到上一轮的旧数据
-const ALIGN_DELAY = 30 * 1000;
+const ALIGN_DELAY = 10 * 1000;
 // 取数失败时的重试间隔（毫秒）：不必等满一轮
 const RETRY_INTERVAL = 60 * 1000;
 // 轮询节拍（秒）：只做时间判断，真正取数由 nextRunAt 控制
