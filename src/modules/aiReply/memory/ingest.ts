@@ -172,8 +172,8 @@ const VERSION_KEY = 'ingest_version';
 /**
  * 解析规则变了之后，按新规则重新解析备份文件，**就地**修正已入库行的正文。
  *
- * 不能删表重导：`chat_line.id` 会重新编号，而 `topic.line_from/line_to` 指着这些 id，
- * 重编一次所有话题就都指错地方了
+ * 不能删表重导：`chat_line.id` 会重新编号，而 `chat_window.line_from/line_to` 指着这些 id，
+ * 重编一次所有窗口就都指错地方了
  */
 function repairParsedText(db: MemoryDatabase, files: { file: string, groupId: number, dateKey: number }[]) {
   if (getMeta(db, VERSION_KEY) === INGEST_VERSION) return;

@@ -132,7 +132,7 @@ const PAGE = `<!doctype html>
 
   <section>
     <div class="row">
-      <h2 style="margin:0">Topic 巩固状态</h2>
+      <h2 style="margin:0">记忆巩固状态</h2>
       <span style="flex:1"></span>
       <button id="refreshConsolidation">刷新</button>
     </div>
@@ -527,8 +527,8 @@ const PAGE = `<!doctype html>
 
     api('/api/memory/consolidation').then((data) => {
       const b = data.backlog;
-      backlog.textContent = b.days + ' 天 / ' + b.chunks + ' 段 / 约 ' + b.lines + ' 行待处理';
-      meta.textContent = b.oldestDate ? '最早积压：' + fmtDateKey(b.oldestDate) : '当前没有 Topic 积压';
+      backlog.textContent = '待向量化：' + b.windows + ' 个聊天窗口 / ' + b.memories + ' 条记忆';
+      meta.textContent = b.oldestDate ? '最早积压：' + fmtDateKey(b.oldestDate) : '当前没有向量积压';
 
       if (!data.runs.length) {
         list.className = 'empty';
@@ -547,9 +547,9 @@ const PAGE = `<!doctype html>
         status.textContent = run.status === 'success' ? '成功' : run.status === 'failed' ? '失败' : '运行中';
         const detail = document.createElement('span');
         detail.className = 'run-detail';
-        const after = run.pendingChunksAfter === null ? '?' : run.pendingChunksAfter;
-        detail.textContent = '积压 ' + run.pendingChunksBefore + ' → ' + after + ' 段'
-          + ' · 处理 ' + run.processedDays + ' 天 / ' + run.topics + ' Topic'
+        const after = run.pendingAfter === null ? '?' : run.pendingAfter;
+        detail.textContent = '待向量化 ' + run.pendingBefore + ' → ' + after
+          + ' · 新窗口 ' + run.windows
           + ' · 向量 ' + run.embedded + ' · 淘汰 ' + run.evicted
           + (run.error ? ' · ' + run.error : '');
         row.appendChild(time);
@@ -761,7 +761,7 @@ export async function handleMemoryRoute(
 
   if (url.pathname === '/api/memory/consolidation' && req.method === 'GET') {
     sendJson(res, 200, {
-      backlog: getConsolidationBacklog(botConfig.aiReply.initiativeList),
+      backlog: getConsolidationBacklog(),
       runs: listConsolidationRuns(),
     });
     return true;

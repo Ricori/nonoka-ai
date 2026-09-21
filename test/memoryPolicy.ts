@@ -65,7 +65,7 @@ try {
   }
   saveEmbeddings(db, 'memory', [{ refId: normal, vec: [0.8, 0.6, 0] }]);
   searchSimilar(db, 'memory', vec, 30);
-  db.prepare('UPDATE memory SET superseded_by = -1 WHERE owner_id = 3').run();
+  db.prepare('DELETE FROM memory WHERE owner_id = 3').run();
   const valid = await recallMemory(1, { query: '完全不匹配的查询', queryVec: vec }, db);
   assert.ok(valid.some((hit) => hit.id === normal));
   assert.ok(valid.every((hit) => hit.ownerId !== 3));
@@ -88,17 +88,17 @@ try {
   const hotId = Number(insert.run(group, today, '用户', '[用户]说：新的拉面记录').lastInsertRowid);
   db.prepare('INSERT INTO chat_fts(rowid,seg) VALUES (?,?)').run(oldId, segment('旧拉面记录'));
   db.prepare('INSERT INTO chat_fts(rowid,seg) VALUES (?,?)').run(hotId, segment('新的拉面记录'));
-  const topic = db.prepare('INSERT INTO topic(group_id,date_key,summary,user_ids,line_from,line_to) VALUES (?,?,?,?,?,?)');
-  const oldTopic = Number(topic.run(group, oldDay, '旧拉面', '[1]', oldId, oldId).lastInsertRowid);
-  const hotTopic = Number(topic.run(group, today, '新拉面', '[1]', hotId, hotId).lastInsertRowid);
-  saveEmbeddings(db, 'topic', [{ refId: oldTopic, vec }, { refId: hotTopic, vec }]);
-  assert.deepEqual(searchSimilar(db, 'topic', vec, 5).map((hit) => hit.refId), [hotTopic]);
+  const window = db.prepare('INSERT INTO chat_window(group_id,date_key,line_from,line_to,text) VALUES (?,?,?,?,?)');
+  const oldWindow = Number(window.run(group, oldDay, oldId, oldId, '旧拉面').lastInsertRowid);
+  const hotWindow = Number(window.run(group, today, hotId, hotId, '新拉面').lastInsertRowid);
+  saveEmbeddings(db, 'window', [{ refId: oldWindow, vec }, { refId: hotWindow, vec }]);
+  assert.deepEqual(searchSimilar(db, 'window', vec, 5).map((hit) => hit.refId), [hotWindow]);
   assert.deepEqual((await recallChat(group, { query: '拉面', days: 365, semantic: false }, db)).map((hit) => hit.id), [hotId]);
   const stats = maintainMemory(db);
   assert.equal(stats.lines, 1);
   assert.equal(db.prepare('SELECT rowid FROM chat_fts WHERE rowid = ?').get(oldId), undefined);
-  assert.equal(db.prepare('SELECT id FROM topic WHERE id = ?').get(oldTopic), undefined);
-  assert.equal(saveEmbeddings(db, 'topic', [{ refId: oldTopic, vec, sourceText: '旧拉面' }]), 0);
+  assert.equal(db.prepare('SELECT id FROM chat_window WHERE id = ?').get(oldWindow), undefined);
+  assert.equal(saveEmbeddings(db, 'window', [{ refId: oldWindow, vec, sourceText: '旧拉面' }]), 0);
   fs.mkdirSync(CHAT_BACKUP_DIR, { recursive: true });
   const oldFile = path.join(CHAT_BACKUP_DIR, `${group}_${oldDay}.txt`);
   assert.ok(!fs.existsSync(oldFile));
@@ -107,24 +107,17 @@ try {
   ingestChatBackups(db, [group]);
   assert.equal((db.prepare('SELECT count(*) n FROM chat_line WHERE date_key < ?').get(historySince()) as { n: number }).n, 0);
   assert.ok(fs.existsSync(oldFile));
-  console.log('✓ 冷数据退出原文索引/话题/向量，导入不复活，原始备份保留');
+  console.log('✓ 冷数据退出原文索引/窗口/向量，导入不复活，原始备份保留');
 
-  const migrationPath = path.join(dir, 'migration.db');
-  const legacyDb = createMemoryDb(migrationPath);
-  const legacyId = memoryStore.addMemory({ ownerId: 6, kind: 'alias', text: '旧别名' }, legacyDb);
-  const manualId = memoryStore.addMemory({ ownerId: 7, kind: 'alias', text: '已人工确认', source: '管理面板' }, legacyDb);
-  saveEmbeddings(legacyDb, 'memory', [{ refId: legacyId, vec }]);
-  legacyDb.exec('ALTER TABLE memory DROP COLUMN verified');
-  setMeta(legacyDb, 'schema_version', '7');
+  // v1~v8 已压平进 v9 基线：停在老版本的库直接拒绝，不能带着 topic 表继续跑
+  const legacyPath = path.join(dir, 'legacy.db');
+  const legacyDb = createMemoryDb(legacyPath);
+  assert.equal(getMeta(legacyDb, 'schema_version'), '9');
+  assert.equal(legacyDb.pragma('auto_vacuum', { simple: true }), 2);
+  setMeta(legacyDb, 'schema_version', '8');
   legacyDb.close();
-  const migrated = createMemoryDb(migrationPath);
-  try {
-    assert.equal(getMeta(migrated, 'schema_version'), '8');
-    assert.equal(memoryStore.getMemory(legacyId, migrated)?.verified, false);
-    assert.equal(memoryStore.getMemory(manualId, migrated)?.verified, true);
-    assert.equal((migrated.prepare("SELECT count(*) n FROM embedding WHERE ref_kind='memory'").get() as { n: number }).n, 0);
-  } finally { migrated.close(); }
-  console.log('✓ v7 迁移隔离未确认身份，保留已知人工来源，旧人物向量失效');
+  assert.throws(() => createMemoryDb(legacyPath), /低于基线 v9/);
+  console.log('✓ 新库直接落到 v9 基线并开启增量回收空页，v8 及更早的库拒绝打开');
 } finally {
   db.close();
   files.forEach((file) => fs.rmSync(file, { force: true }));

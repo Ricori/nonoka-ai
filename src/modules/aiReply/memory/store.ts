@@ -7,12 +7,9 @@ import { MAX_USER_MEMORIES, usableMemory, usableMemorySql } from './policy';
 /**
  * 结构化记忆的存取。
  *
- * 每条记忆是一行，带时间、来源、置信度和被印证次数，能单独更新、过期和软删。
+ * 每条记忆是一行，带时间、来源、置信度和被印证次数，能单独更新、过期和删除。
  * 长期事实（在读研究生）和短期热点（最近在打黑神话）分离。
  */
-
-/** 软删的哨兵值。写真实 id 表示被某条新记忆取代，写 -1 表示直接失效 */
-const DELETED = -1;
 
 /** 档案行里最多列几条印象，避免每轮回复的 prompt 被记忆撑爆 */
 const MAX_INJECT_TRAITS = 4;
@@ -126,6 +123,19 @@ interface MemoryRow {
   source: string | null;
 }
 
+/** 物理删除记忆及其全文索引、向量、证据链接；不再被任何记忆引用的证据批次一并删掉 */
+function purgeMemories(db: MemoryDatabase, ids: number[]) {
+  if (ids.length === 0) return;
+  const marks = ids.map(() => '?').join(',');
+  db.transaction(() => {
+    db.prepare(`DELETE FROM memory_evidence WHERE memory_id IN (${marks})`).run(...ids);
+    db.prepare('DELETE FROM memory_evidence_batch WHERE id NOT IN (SELECT batch_id FROM memory_evidence)').run();
+    db.prepare(`DELETE FROM memory_fts WHERE rowid IN (${marks})`).run(...ids);
+    db.prepare(`DELETE FROM memory WHERE id IN (${marks})`).run(...ids);
+  })();
+  deleteEmbeddings(db, 'memory', ids);
+}
+
 function toItem(r: MemoryRow): MemoryItem {
   return {
     id: r.id,
@@ -232,7 +242,7 @@ class MemoryStore {
     // 按 id 取出 + 稳定排序：同分的条目保持写入顺序，
     // 否则刚迁进来的一批分数完全相同，每次读出来的顺序都不一样，注入的 prompt 也跟着抖
     const rows = db.prepare(
-      "SELECT * FROM memory WHERE scope = 'user' AND owner_id = ? AND superseded_by IS NULL ORDER BY id",
+      "SELECT * FROM memory WHERE scope = 'user' AND owner_id = ? ORDER BY id",
     ).all(userId) as MemoryRow[];
 
     const now = Date.now();
@@ -257,7 +267,7 @@ class MemoryStore {
 
   /** 单条记忆，管理面板改之前要先确认它还在 */
   getMemory(id: number, db = this.db()): MemoryItem | null {
-    const row = db.prepare('SELECT * FROM memory WHERE id = ? AND superseded_by IS NULL').get(id) as MemoryRow | undefined;
+    const row = db.prepare('SELECT * FROM memory WHERE id = ?').get(id) as MemoryRow | undefined;
     return row ? toItem(row) : null;
   }
 
@@ -272,7 +282,7 @@ class MemoryStore {
 
     if (!q) {
       (db.prepare(
-        "SELECT owner_id FROM memory WHERE scope = 'user' AND superseded_by IS NULL"
+        "SELECT owner_id FROM memory WHERE scope = 'user'"
         + ' GROUP BY owner_id ORDER BY count(*) DESC LIMIT ?',
       ).all(limit) as { owner_id: number }[]).forEach((r) => push(r.owner_id));
     } else {
@@ -284,7 +294,7 @@ class MemoryStore {
         .all(like, limit) as { user_id: number }[]).forEach((r) => push(r.user_id));
       (db.prepare(
         "SELECT DISTINCT owner_id FROM memory WHERE scope = 'user' AND kind = 'alias'"
-        + " AND superseded_by IS NULL AND text LIKE ? ESCAPE '\\' LIMIT ?",
+        + " AND text LIKE ? ESCAPE '\\' LIMIT ?",
       ).all(like, limit) as { owner_id: number }[]).forEach((r) => push(r.owner_id));
     }
 
@@ -412,7 +422,6 @@ class MemoryStore {
    * 应用 LLM 返回的增删改操作。
    *
    * pinned 是人工维护的，UPDATE/DELETE 一律在这里挡掉——不依赖服务端 prompt 自觉。
-   * DELETE 只写 superseded_by 不物理删，判错了还能捞回来
    */
   applyOps(userId: number, groupId: number | null, ops: MemoryOp[], db = this.db()): ApplyResult {
     const result: ApplyResult = {
@@ -422,7 +431,7 @@ class MemoryStore {
 
     const now = Date.now();
     const existing = new Map(
-      (db.prepare("SELECT * FROM memory WHERE scope = 'user' AND owner_id = ? AND superseded_by IS NULL").all(userId) as MemoryRow[])
+      (db.prepare("SELECT * FROM memory WHERE scope = 'user' AND owner_id = ?").all(userId) as MemoryRow[])
         .map((r) => [r.id, toItem(r)]),
     );
 
@@ -440,9 +449,7 @@ class MemoryStore {
         }
 
         if (op.op === 'DELETE') {
-          db.prepare('UPDATE memory SET superseded_by = ?, updated_at = ? WHERE id = ?').run(DELETED, now, op.id);
-          db.prepare('DELETE FROM memory_fts WHERE rowid = ?').run(op.id);
-          deleteEmbeddings(db, 'memory', [op.id!]);
+          purgeMemories(db, [op.id!]);
           existing.delete(op.id!);
           result.deleted.push(op.id!);
           return;
@@ -511,7 +518,7 @@ class MemoryStore {
 
     const placeholders = ids.map(() => '?').join(',');
     const alive = (db.prepare(
-      `SELECT id FROM memory WHERE owner_id = ? AND superseded_by IS NULL AND id IN (${placeholders})`,
+      `SELECT id FROM memory WHERE owner_id = ? AND id IN (${placeholders})`,
     ).all(userId, ...ids) as { id: number }[]).map((r) => r.id);
     if (alive.length === 0) return null;
 
@@ -595,21 +602,15 @@ class MemoryStore {
     return { ok: true, textChanged };
   }
 
-  /** 人工删一条。同样只软删，判错了改回 superseded_by 就能捞回来 */
+  /** 人工删一条 */
   removeMemory(id: number, db = this.db()): boolean {
     if (!this.getMemory(id, db)) return false;
-
-    db.transaction(() => {
-      db.prepare('UPDATE memory SET superseded_by = ?, updated_at = ? WHERE id = ?').run(DELETED, Date.now(), id);
-      db.prepare('DELETE FROM memory_fts WHERE rowid = ?').run(id);
-    })();
-
-    deleteEmbeddings(db, 'memory', [id]);
+    purgeMemories(db, [id]);
     return true;
   }
 
   /**
-   * 超出上限的非 pinned 记忆按分数从低到高软删，返回被淘汰的 id。
+   * 超出上限的非 pinned 记忆按分数从低到高删除，返回被淘汰的 id。
    * 不再像旧实现那样硬截断前 6 条——那样长期事实会被短期热点挤掉，挤掉就再也回不来
    */
   evict(userId: number, db = this.db()): number[] {
@@ -623,24 +624,13 @@ class MemoryStore {
     });
     const totalBudget = MAX_USER_MEMORIES;
     const retained = new Set(items.filter((i) => kept.has(i.id)).slice(0, totalBudget).map((i) => i.id));
-    // 未确认身份单独隔离，保留在管理页供确认；其余过期/超额条目软删。
+    // 未确认身份单独隔离，保留在管理页供确认；其余过期/超额条目删除。
     const doomed = items.filter((i) => {
       const quarantined = (i.kind === 'alias' || i.kind === 'relation') && !i.verified;
       return !quarantined && !retained.has(i.id);
     }).map((i) => i.id);
     if (doomed.length === 0) return [];
-    const now = Date.now();
-
-    db.transaction(() => {
-      const supersede = db.prepare('UPDATE memory SET superseded_by = ?, updated_at = ? WHERE id = ?');
-      const unindex = db.prepare('DELETE FROM memory_fts WHERE rowid = ?');
-      doomed.forEach((id) => {
-        supersede.run(DELETED, now, id);
-        unindex.run(id);
-      });
-    })();
-
-    deleteEmbeddings(db, 'memory', doomed);
+    purgeMemories(db, doomed);
     return doomed;
   }
 }

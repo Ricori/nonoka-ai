@@ -130,7 +130,7 @@ class MemoryExtractor {
     this.loaded = true;
     try {
       const rows = getMemoryDb().prepare(
-        "SELECT DISTINCT owner_id FROM memory WHERE scope = 'user' AND superseded_by IS NULL",
+        "SELECT DISTINCT owner_id FROM memory WHERE scope = 'user'",
       ).all() as { owner_id: number }[];
       rows.forEach((r) => this.trackedUsers.add(r.owner_id));
       printLog(`[MemoryExtract] 已加载 ${this.trackedUsers.size} 个用户记忆`);

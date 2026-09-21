@@ -1,6 +1,6 @@
 /**
  * 轻量日志网页服务：tail PM2 的日志文件，用 SSE 实时推到浏览器。
- * 纯 Node 内置模块，不加任何依赖。独立于机器人进程运行（机器人崩了也能看日志）。
+ * 除复用项目里的 better-sqlite3 做数据库备份外只用 Node 内置模块。独立于机器人进程运行（机器人崩了也能看日志）。
  *
  * 用法：
  *   npx tsx scripts/log-server.ts
@@ -10,6 +10,8 @@
  *   LOG_TOKEN  访问令牌，建议设置；设置后需用 ?token=xxx 访问
  *   LOG_FILES  要 tail 的文件，逗号分隔，默认 logs/nonoka.log
  *   LOG_TAIL   初次连接回放的行数，默认 300
+ *   LOG_DB_BACKUP_DAYS  记忆库自动备份间隔天数，默认 10，0 关闭
+ *   LOG_DB_BACKUP_KEEP  自动备份保留份数，默认 3
  *
  * pm2-logrotate 配置为 retain all 后旧日志会一直保留（见 scripts/setup-logrotate.sh），
  * 切分出来的归档文件（<name>__<时间戳>.log[.gz]）不会再被 tail，但可以通过
@@ -21,6 +23,7 @@ import path from 'path';
 import zlib from 'zlib';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
+import Database from 'better-sqlite3';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -261,8 +264,8 @@ function walkFiles(dir: string, base: string = dir): WalkedFile[] {
 }
 
 /** 用内置 zlib（deflate raw）手写一个最小可用的 zip 打包器，避免引入第三方依赖 */
-function buildZip(dir: string): Buffer {
-  const files = walkFiles(dir);
+function buildZip(dir: string, skip: (rel: string) => boolean = () => false): Buffer {
+  const files = walkFiles(dir).filter((f) => !skip(f.rel));
   const chunks: Buffer[] = [];
   const centralRecords: Buffer[] = [];
   let offset = 0;
@@ -584,7 +587,8 @@ const server = http.createServer((req, res) => {
     }
     let zipBuf: Buffer;
     try {
-      zipBuf = buildZip(MEMORY_DIR);
+      // 备份目录动辄几百 MB，整个读进内存打包会撑爆，要备份自己去服务器上拿
+      zipBuf = buildZip(MEMORY_DIR, (rel) => rel.startsWith('backups/'));
     } catch (err) {
       res.writeHead(500).end(`打包失败: ${err}`);
       return;
@@ -667,7 +671,64 @@ const server = http.createServer((req, res) => {
   res.writeHead(404).end('not found');
 });
 
+// ========== 记忆库定期备份 ==========
+
+const DB_FILE = path.join(MEMORY_DIR, 'nonoka.db');
+const BACKUP_DIR = path.join(MEMORY_DIR, 'backups');
+const BACKUP_DAYS = Number(process.env.LOG_DB_BACKUP_DAYS ?? 10);
+const BACKUP_KEEP = Math.max(1, Number(process.env.LOG_DB_BACKUP_KEEP ?? 3));
+/** 自动备份的文件名，时间戳写在名字里：按名字判断是否到期，拷贝/同步改了 mtime 也不受影响 */
+const AUTO_BACKUP_RE = /^nonoka-auto-(\d{8})-(\d{6})\.db$/;
+
+function autoBackups(): { name: string, time: number }[] {
+  let names: string[];
+  try {
+    names = fs.readdirSync(BACKUP_DIR);
+  } catch {
+    return [];
+  }
+  return names.flatMap((name) => {
+    const m = AUTO_BACKUP_RE.exec(name);
+    if (!m) return [];
+    const [d, t] = [m[1], m[2]];
+    const time = new Date(`${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6)}T${t.slice(0, 2)}:${t.slice(2, 4)}:${t.slice(4)}`).getTime();
+    return [{ name, time }];
+  }).sort((a, b) => b.time - a.time);
+}
+
+/** 到期就备份一次。VACUUM INTO 在只读连接上生成一致的压缩快照，不锁机器人的写入，WAL 里的数据也会带上 */
+function backupIfDue() {
+  if (!(BACKUP_DAYS > 0) || !fs.existsSync(DB_FILE)) return;
+  const latest = autoBackups()[0];
+  if (latest && Date.now() - latest.time < BACKUP_DAYS * 86400000) return;
+
+  fs.mkdirSync(BACKUP_DIR, { recursive: true });
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  const target = path.join(BACKUP_DIR, `nonoka-auto-${stamp}.db`);
+  // 先写临时名再改名，中途失败不会留下一份看着像成功的残缺备份
+  const tmp = `${target}.tmp`;
+  let db: Database.Database | null = null;
+  try {
+    db = new Database(DB_FILE, { readonly: true, fileMustExist: true });
+    db.pragma('busy_timeout = 10000');
+    db.prepare('VACUUM INTO ?').run(tmp);
+    fs.renameSync(tmp, target);
+    autoBackups().slice(BACKUP_KEEP).forEach((b) => fs.rmSync(path.join(BACKUP_DIR, b.name), { force: true }));
+    console.log(`[log-server] 记忆库已备份：${target}（${(fs.statSync(target).size / 1048576).toFixed(1)} MB）`);
+  } catch (err) {
+    fs.rmSync(tmp, { force: true });
+    console.error(`[log-server] 记忆库备份失败：${err}`);
+  } finally {
+    db?.close();
+  }
+}
+
 FILES.forEach(watchFile);
+// 启动后稍等再查，避开和机器人同时启动时的迁移；之后每小时看一次是否到期
+setTimeout(backupIfDue, 60 * 1000);
+setInterval(backupIfDue, 60 * 60 * 1000);
 server.listen(PORT, HOST, () => {
   console.log(`[log-server] http://${HOST}:${PORT}  tailing: ${FILES.join(', ')}`);
   if (!TOKEN) console.log('[log-server] 警告：未设置 LOG_TOKEN，任何人可访问，建议设置');

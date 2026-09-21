@@ -1,18 +1,40 @@
-import { printError } from '@/utils/print';
-import { getMeta, setMeta, type MemoryDatabase } from './db';
+import { printError, printLog } from '@/utils/print';
+import {
+  delMeta, getMeta, setMeta, type MemoryDatabase,
+} from './db';
 import { historySince, usableMemorySql } from './policy';
 
 /**
  * 向量存取与暴力检索。
  *
- * 向量化的是「话题片段」和「记忆条目」而不是每条消息，数量是 O(千) 而非 O(百万)，
+ * 向量化的是「聊天窗口」和「记忆条目」而不是每条消息，数量是 O(万) 而非 O(百万)，
  * 几千条 Float32Array 常驻内存扫一遍是毫秒级，不值得引一个向量索引库
  */
 
-export type RefKind = 'memory' | 'topic';
+export type RefKind = 'memory' | 'window';
+
+/** 每种向量对应的源表与有效范围。窗口随热历史一起过期 */
+function sourceSql(refKind: RefKind): { rows: string, text: string } {
+  if (refKind === 'memory') {
+    return {
+      rows: `SELECT e.ref_id, e.vec FROM embedding e JOIN memory m ON m.id = e.ref_id WHERE e.ref_kind = 'memory' AND ${usableMemorySql()}`,
+      text: `SELECT m.text FROM memory m WHERE m.id = ? AND ${usableMemorySql()}`,
+    };
+  }
+  return {
+    rows: `SELECT e.ref_id, e.vec FROM embedding e JOIN chat_window w ON w.id = e.ref_id WHERE e.ref_kind = 'window' AND w.date_key >= ${historySince()}`,
+    text: `SELECT text FROM chat_window WHERE id = ? AND date_key >= ${historySince()}`,
+  };
+}
 
 /** 换 embedding 模型维度会变，首次写入时记下来，之后不一致直接拒绝 */
 const DIM_KEY = 'vector_dim';
+
+/**
+ * 库里向量出自哪个模型。维度相同的两个模型照样不能互相比，只看维度拦不住，
+ * 所以按模型名认：变了就清空全部向量，由巩固任务在 45 天热窗口内重算
+ */
+const MODEL_KEY = 'vector_model';
 
 export interface SimilarHit {
   refId: number;
@@ -74,14 +96,30 @@ function loadVectors(db: MemoryDatabase, refKind: RefKind): VecRow[] {
 
   let rows = byKind.get(refKind);
   if (!rows) {
-    rows = (db.prepare(refKind === 'topic'
-      ? `SELECT e.ref_id, e.vec FROM embedding e JOIN topic t ON t.id = e.ref_id WHERE e.ref_kind = 'topic' AND t.date_key >= ${historySince()}`
-      : `SELECT e.ref_id, e.vec FROM embedding e JOIN memory m ON m.id = e.ref_id WHERE e.ref_kind = 'memory' AND ${usableMemorySql()}`)
-      .all() as { ref_id: number, vec: Buffer }[])
+    rows = (db.prepare(sourceSql(refKind).rows).all() as { ref_id: number, vec: Buffer }[])
       .map((r) => ({ refId: r.ref_id, vec: blobToVec(r.vec) }));
     byKind.set(refKind, rows);
   }
   return rows;
+}
+
+/**
+ * 让库里的向量与这次返回的模型对齐，返回库里的旧向量还能不能用。
+ * model 为 null 是旧版服务不报模型名，按原样放行
+ */
+export function syncVectorModel(db: MemoryDatabase, model: string | null): boolean {
+  if (!model) return true;
+  const current = getMeta(db, MODEL_KEY);
+  if (current === model) return true;
+  const cleared = db.transaction(() => {
+    const n = db.prepare('DELETE FROM embedding').run().changes;
+    delMeta(db, DIM_KEY);
+    setMeta(db, MODEL_KEY, model);
+    return n;
+  }).immediate();
+  invalidateVectors(db);
+  printLog(`[Vector] embedding 模型 ${current ?? '(未记录)'} -> ${model}，清空 ${cleared} 条旧向量，等巩固任务重算`);
+  return false;
 }
 
 export function getVectorDim(db: MemoryDatabase): number | null {
@@ -108,8 +146,11 @@ export function saveEmbeddings(
   db: MemoryDatabase,
   refKind: RefKind,
   items: { refId: number, vec: number[] | Float32Array, sourceText?: string }[],
+  /** 产出这批向量的模型，传了就先与库对齐，模型变了会清空旧向量 */
+  model?: string | null,
 ): number {
   if (items.length === 0) return 0;
+  if (model !== undefined) syncVectorModel(db, model);
   if (!checkDim(db, items[0].vec.length)) return 0;
 
   const stmt = db.prepare(
@@ -122,10 +163,7 @@ export function saveEmbeddings(
       let currentText = true;
       // 网络请求期间文本可能被改写、删除或冷却归档，迟到向量不能再写回来。
       if (sourceText !== undefined) {
-        const current = db.prepare(refKind === 'memory'
-          ? `SELECT m.text FROM memory m WHERE m.id = ? AND ${usableMemorySql()}`
-          : `SELECT summary AS text FROM topic WHERE id = ? AND date_key >= ${historySince()}`)
-          .get(refId) as { text: string } | undefined;
+        const current = db.prepare(sourceSql(refKind).text).get(refId) as { text: string } | undefined;
         currentText = !!current && current.text === sourceText;
       }
       // 同一批里维度飘了就跳过这条，不连累整批

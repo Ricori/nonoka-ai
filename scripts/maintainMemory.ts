@@ -12,7 +12,9 @@ const since = historySince();
 console.log(JSON.stringify({
   since,
   oldChatLines: (read.prepare('SELECT count(*) n FROM chat_line WHERE date_key < ?').get(since) as { n: number }).n,
-  oldTopics: (read.prepare('SELECT count(*) n FROM topic WHERE date_key < ?').get(since) as { n: number }).n,
+  // 预览在迁移前跑，v9 之前的库还没有窗口表
+  oldWindows: read.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'chat_window'").get()
+    ? (read.prepare('SELECT count(*) n FROM chat_window WHERE date_key < ?').get(since) as { n: number }).n : 0,
   beforeBytes: fs.statSync(file).size,
 }, null, 2));
 
@@ -35,7 +37,7 @@ if (process.argv.includes('--apply')) {
     db.pragma('wal_checkpoint(TRUNCATE)');
     const pending = db.prepare(`SELECT count(*) n FROM memory m LEFT JOIN embedding e
       ON e.ref_kind = 'memory' AND e.ref_id = m.id WHERE ${usableMemorySql()} AND e.ref_id IS NULL`).get() as { n: number };
-    const quarantined = db.prepare("SELECT count(*) n FROM memory WHERE superseded_by IS NULL AND kind IN ('alias','relation') AND verified=0 AND pinned=0").get() as { n: number };
+    const quarantined = db.prepare("SELECT count(*) n FROM memory WHERE kind IN ('alias','relation') AND verified=0 AND pinned=0").get() as { n: number };
     console.log(JSON.stringify({
       ...stats,
       afterBytes: fs.statSync(file).size,

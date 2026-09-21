@@ -9,12 +9,11 @@
     "debug": "cross-env YDEBUG=true tsx ./src/index.ts",
     "test": "cross-env YDEBUG=true tsx ./test/index.ts",
     "memory:consolidate": "tsx ./scripts/consolidateMemory.ts",
-    "memory:topic-cost": "tsx ./scripts/topicCost.ts",
-    "test:topic": "tsx ./test/topic.ts",
     "test:memory-policy": "tsx ./test/memoryPolicy.ts",
     "memory:maintain": "tsx ./scripts/maintainMemory.ts",
     "memory:probe": "tsx ./scripts/recallProbe.ts",
     "memory:eval": "tsx ./scripts/recallEval.ts",
+    "memory:semantic-eval": "tsx ./scripts/semanticEval.ts",
     "lint": "eslint --ext .ts src/ --quiet",
     "lint-fix": "eslint --fix --ext .ts src/ --quiet"
   },

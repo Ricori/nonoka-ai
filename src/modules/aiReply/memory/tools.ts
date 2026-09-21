@@ -38,6 +38,11 @@ export const MEMORY_TOOLS: ToolDef[] = [
       properties: {
         query: { type: 'string', description: '要查什么，用自然语言描述，例如「专业和学校」「喜欢的游戏」' },
         about: { type: 'string', description: '要查哪位群友的档案，填群里对他的称呼。不填就在所有人里找' },
+        keywords: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '换几种说法再找：同义词、别名、具体名称、群里的叫法，例如查「拉面店」时给 ["一兰", "豚骨", "面馆"]。不要重复 query 里已有的词',
+        },
         overview: { type: 'boolean', description: '仅在需要整体人物介绍时设 true；查询学校、工作等具体事实时不要开启' },
       },
       required: ['query'],
@@ -52,6 +57,11 @@ export const MEMORY_TOOLS: ToolDef[] = [
       properties: {
         query: { type: 'string', description: '要找什么内容，用自然语言描述，例如「上次说的那家拉面店」' },
         speaker: { type: 'string', description: '限定是谁说的，填群里对他的称呼。不填就查所有人' },
+        keywords: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '换几种说法再找：同义词、别名、具体名称、群里的叫法，例如查「拉面店」时给 ["一兰", "豚骨", "面馆"]。不要重复 query 里已有的词',
+        },
         days: { type: 'number', description: '往前翻多少天，默认及上限均为 45。更早的原文已归档，不保证记得' },
       },
       required: ['query'],
@@ -81,8 +91,15 @@ function formatMemory(groupId: number, hits: Awaited<ReturnType<typeof recallMem
 
 /** 本地执行一次工具调用，任何情况都返回一段给模型看的文本，不抛异常 */
 export async function runMemoryTool(groupId: number, name: string, rawInput: unknown): Promise<string> {
-  const input = (rawInput ?? {}) as { query?: string, about?: string, speaker?: string, days?: number, overview?: boolean };
+  const input = (rawInput ?? {}) as {
+    query?: string, about?: string, speaker?: string, days?: number, overview?: boolean, keywords?: unknown,
+  };
   const query = typeof input.query === 'string' ? input.query.trim() : '';
+  // 模型偶尔会把数组写成一个逗号串，两种都认
+  const rawKeywords = typeof input.keywords === 'string' ? input.keywords.split(/[,，、]/) : input.keywords;
+  const keywords = Array.isArray(rawKeywords)
+    ? rawKeywords.filter((k): k is string => typeof k === 'string' && k.trim() !== '') : [];
+  const kwLog = keywords.length ? `, keywords=${keywords.join('/')}` : '';
   // 每条出口都要留日志：只在成功时打印的话，「认不出名字」这种失败在日志里是隐形的
   if (!query) {
     printLog(`[MemoryTool] ${name} -> 缺少 query`);
@@ -100,9 +117,9 @@ export async function runMemoryTool(groupId: number, name: string, rawInput: unk
       if (aboutUserIds && aboutUserIds.length > 1) return '这个称呼对应多位群友，请提供完整昵称，暂不混合他们的档案。';
 
       const hits = await recallMemory(groupId, {
-        query, aboutUserIds, limit: TOOL_LIMIT, overview: input.overview === true,
+        query, keywords, aboutUserIds, limit: TOOL_LIMIT, overview: input.overview === true,
       });
-      printLog(`[MemoryTool] recall_memory(${query}${about ? `, about=${about}` : ''}) -> ${hits.length} 条`);
+      printLog(`[MemoryTool] recall_memory(${query}${about ? `, about=${about}` : ''}${kwLog}) -> ${hits.length} 条`);
       return formatMemory(groupId, hits);
     }
 
@@ -117,9 +134,12 @@ export async function runMemoryTool(groupId: number, name: string, rawInput: unk
 
       const days = typeof input.days === 'number' && input.days > 0 ? Math.min(input.days, HISTORY_DAYS) : undefined;
       const hits = await recallChat(groupId, {
-        query, speakerIds, days, limit: TOOL_LIMIT,
+        query, keywords, speakerIds, days, limit: TOOL_LIMIT,
       });
-      printLog(`[MemoryTool] recall_chat(${query}${speaker ? `, speaker=${speaker}` : ''}) -> ${hits.length} 条`);
+      // 按来源计数，用来判断语义路到底贡献了多少字面路给不了的结果
+      const via = (kind: string) => hits.filter((h) => h.via === kind).length;
+      printLog(`[MemoryTool] recall_chat(${query}${speaker ? `, speaker=${speaker}` : ''}${kwLog}) -> ${hits.length} 条`
+        + `（字面 ${via('literal')} / 语义 ${via('semantic')} / 两路 ${via('both')}）`);
       return formatChat(hits);
     }
 

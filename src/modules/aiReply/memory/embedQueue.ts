@@ -54,21 +54,21 @@ async function flushEmbedQueue(db: MemoryDatabase = getMemoryDb()): Promise<numb
   batch.forEach((id) => pending.delete(id));
 
   try {
-    // 期间被软删或淘汰掉的条目不用再算向量
+    // 期间被删掉或淘汰掉的条目不用再算向量
     const rows = db.prepare(
       `SELECT id, text FROM memory m WHERE ${usableMemorySql()} AND id IN (${batch.map(() => '?').join(', ')})`,
     ).all(...batch) as { id: number, text: string }[];
     if (rows.length === 0) return 0;
 
-    const vectors = await embedTexts(rows.map((r) => r.text));
-    if (!vectors) {
+    const result = await embedTexts(rows.map((r) => r.text));
+    if (!result) {
       // 整批失败就放回去，下次再试；不能只补一半，调用方是按下标对回条目的
       rows.forEach((r) => pending.add(r.id));
       printError(`[EmbedQueue] ${rows.length} 条向量化失败，已放回队列`);
       return 0;
     }
 
-    const n = saveEmbeddings(db, 'memory', rows.map((r, i) => ({ refId: r.id, vec: vectors[i], sourceText: r.text })));
+    const n = saveEmbeddings(db, 'memory', rows.map((r, i) => ({ refId: r.id, vec: result.vectors[i], sourceText: r.text })), result.model);
     printLog(`[EmbedQueue] 已向量化 ${n} 条记忆`);
     return n;
   } catch (e) {
