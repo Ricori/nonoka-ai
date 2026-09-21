@@ -1,5 +1,6 @@
 import { printError } from '@/utils/print';
 import { getMeta, setMeta, type MemoryDatabase } from './db';
+import { historySince, usableMemorySql } from './policy';
 
 /**
  * 向量存取与暴力检索。
@@ -48,12 +49,23 @@ export function blobToVec(buf: Buffer): Float32Array {
 
 /** 解码后的向量按库 + 类型常驻内存，否则每次检索都要把整张表读出来重新解码 */
 const cache = new WeakMap<MemoryDatabase, Map<RefKind, VecRow[]>>();
+const cacheVersions = new WeakMap<MemoryDatabase, string>();
+
+export function invalidateVectors(db: MemoryDatabase) {
+  cache.delete(db);
+  cacheVersions.delete(db);
+}
 
 function invalidate(db: MemoryDatabase, refKind: RefKind) {
   cache.get(db)?.delete(refKind);
 }
 
 function loadVectors(db: MemoryDatabase, refKind: RefKind): VecRow[] {
+  const version = `${db.pragma('data_version', { simple: true })}:${historySince()}`;
+  if (cacheVersions.get(db) !== version) {
+    cache.delete(db);
+    cacheVersions.set(db, version);
+  }
   let byKind = cache.get(db);
   if (!byKind) {
     byKind = new Map();
@@ -62,7 +74,10 @@ function loadVectors(db: MemoryDatabase, refKind: RefKind): VecRow[] {
 
   let rows = byKind.get(refKind);
   if (!rows) {
-    rows = (db.prepare('SELECT ref_id, vec FROM embedding WHERE ref_kind = ?').all(refKind) as { ref_id: number, vec: Buffer }[])
+    rows = (db.prepare(refKind === 'topic'
+      ? `SELECT e.ref_id, e.vec FROM embedding e JOIN topic t ON t.id = e.ref_id WHERE e.ref_kind = 'topic' AND t.date_key >= ${historySince()}`
+      : `SELECT e.ref_id, e.vec FROM embedding e JOIN memory m ON m.id = e.ref_id WHERE e.ref_kind = 'memory' AND ${usableMemorySql()}`)
+      .all() as { ref_id: number, vec: Buffer }[])
       .map((r) => ({ refId: r.ref_id, vec: blobToVec(r.vec) }));
     byKind.set(refKind, rows);
   }
@@ -92,7 +107,7 @@ function checkDim(db: MemoryDatabase, len: number): boolean {
 export function saveEmbeddings(
   db: MemoryDatabase,
   refKind: RefKind,
-  items: { refId: number, vec: number[] | Float32Array }[],
+  items: { refId: number, vec: number[] | Float32Array, sourceText?: string }[],
 ): number {
   if (items.length === 0) return 0;
   if (!checkDim(db, items[0].vec.length)) return 0;
@@ -103,9 +118,18 @@ export function saveEmbeddings(
 
   const written = db.transaction(() => {
     let n = 0;
-    for (const { refId, vec } of items) {
+    for (const { refId, vec, sourceText } of items) {
+      let currentText = true;
+      // 网络请求期间文本可能被改写、删除或冷却归档，迟到向量不能再写回来。
+      if (sourceText !== undefined) {
+        const current = db.prepare(refKind === 'memory'
+          ? `SELECT m.text FROM memory m WHERE m.id = ? AND ${usableMemorySql()}`
+          : `SELECT summary AS text FROM topic WHERE id = ? AND date_key >= ${historySince()}`)
+          .get(refId) as { text: string } | undefined;
+        currentText = !!current && current.text === sourceText;
+      }
       // 同一批里维度飘了就跳过这条，不连累整批
-      if (vec.length === items[0].vec.length) {
+      if (currentText && vec.length === items[0].vec.length) {
         stmt.run(refKind, refId, vecToBlob(normalize(vec)));
         n += 1;
       }

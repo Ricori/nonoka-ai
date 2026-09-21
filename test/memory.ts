@@ -64,7 +64,7 @@ const EXPECTED_TABLES = [
 ];
 
 /** 基线版本 + 增量迁移条数，加一条迁移就要同步改这里 */
-const SCHEMA_VERSION = '7';
+const SCHEMA_VERSION = '8';
 
 function testSchema() {
   console.log('\n[schema]');
@@ -80,7 +80,7 @@ function testSchema() {
     const cols = (db.prepare('PRAGMA table_info(memory)').all() as { name: string }[]).map((c) => c.name);
     check('memory 列完整', cols, [
       'id', 'scope', 'owner_id', 'group_id', 'kind', 'text', 'first_seen',
-      'last_seen', 'hits', 'confidence', 'pinned', 'superseded_by', 'source', 'updated_at',
+      'last_seen', 'hits', 'confidence', 'pinned', 'superseded_by', 'source', 'updated_at', 'verified',
     ]);
 
     setMeta(db, 'probe', 'a');
@@ -272,6 +272,10 @@ async function testConsolidationTracking() {
 function testVector() {
   console.log('\n[向量]');
   withDb((db) => {
+    for (const id of [1, 2, 3]) {
+      db.prepare("INSERT INTO topic (id,group_id,date_key,summary,user_ids,line_from,line_to) VALUES (?,1,?,'测试','[]',1,1)")
+        .run(id, Number(backupDateKey()));
+    }
     const round = (v: Float32Array) => [...v].map((x) => Number(x.toFixed(4)));
     check('归一化成单位向量', round(normalize([3, 4, 0])), [0.6, 0.8, 0]);
     check('零向量不炸', round(normalize([0, 0, 0])), [0, 0, 0]);
@@ -295,6 +299,7 @@ function testVector() {
     check('覆盖写立刻生效（缓存已失效）', searchSimilar(db, 'topic', [1, 0, 0], 1).map((h) => h.refId), [2]);
     deleteEmbeddings(db, 'topic', [1, 2, 3]);
     check('删干净', searchSimilar(db, 'topic', [1, 0, 0], 5).length, 0);
+    db.exec('DELETE FROM topic');
   });
 }
 
@@ -356,7 +361,7 @@ async function testRecall() {
     }, db);
     check('不指定说话人时两个人都在', plain.map((h) => h.userId).sort(), [111, 222]);
     check('指定说话人后他排到最前', boosted[0].userId, 222);
-    check('但只是加权，别人说的照样在候选里', boosted.map((h) => h.userId).sort(), [111, 222]);
+    check('指定说话人后只返回这个人的命中', boosted.map((h) => h.userId).sort(), [222]);
 
     console.log('\n[语义召回]');
     // 3 天前那段爬山对话（含 bot 那行）切成一个话题，给它一个向量
@@ -522,8 +527,8 @@ function testStore() {
     memoryStore.noteNickName(FAKE_GROUP, U, '雨漫', db);
     memoryStore.noteNickName(OTHER_GROUP, U, '浅秋', db);
 
-    const trait = memoryStore.addMemory({ ownerId: U, kind: 'trait', text: '在读研究生' }, db);
-    const ep = memoryStore.addMemory({ ownerId: U, kind: 'episode', text: '最近在打黑神话' }, db);
+    const trait = addMemory(db, { ownerId: U, kind: 'trait', text: '在读研究生' });
+    const ep = addMemory(db, { ownerId: U, kind: 'episode', text: '最近在打黑神话' });
     const rel = memoryStore.addMemory({
       ownerId: U, kind: 'relation', text: '是乃乃香的同桌', pinned: true,
     }, db);
@@ -615,7 +620,7 @@ function testStore() {
       }, db);
     }
     const evicted = memoryStore.evict(U, db);
-    check('episode 按自己的配额淘汰', memoryStore.listUserMemories(U, db).filter((m) => !m.pinned && m.kind === 'episode').length, 8);
+    check('episode 按自己的配额淘汰', memoryStore.listUserMemories(U, db).filter((m) => !m.pinned && m.kind === 'episode').length, 4);
     check('淘汰的是低分那批', evicted.length > 0 && texts().includes('住在广州'), true);
     check('钉住的永不淘汰', texts().includes('是乃乃香的同桌') && texts().includes('桃子姐'), true);
 
@@ -634,7 +639,7 @@ function testStore() {
     const policyCounts = (['alias', 'relation', 'trait', 'episode'] as const).map(
       (kind) => memoryStore.listUserMemories(POLICY_USER, db).filter((m) => m.kind === kind).length,
     );
-    check('四类记忆使用独立配额', policyCounts, [8, 8, 12, 8]);
+    check('每人 14 条，四类记忆使用独立配额', policyCounts, [2, 2, 6, 4]);
   });
 }
 
@@ -740,6 +745,7 @@ export async function testMemory() {
     await testRecall();
     await testRecallQuality();
     console.log(failed === 0 ? '\n全部通过' : `\n${failed} 项未通过`);
+    if (failed > 0) process.exitCode = 1;
   } finally {
     fixtures.forEach((f) => fs.rmSync(f, { force: true }));
     ['', '-wal', '-shm'].forEach((suffix) => fs.rmSync(`${TEST_DB}${suffix}`, { force: true }));

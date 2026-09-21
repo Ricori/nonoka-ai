@@ -7,6 +7,8 @@ import {
   getMemoryDb, getMeta, setMeta, type MemoryDatabase,
 } from './db';
 import { dictSignature, segment, stripSpeakerPrefix } from './segment';
+import { historySince, usableMemorySql } from './policy';
+import { maintainMemory } from './maintenance';
 
 /**
  * 把 data/memory/chat/*.txt 导进 chat_line + chat_fts。
@@ -148,7 +150,7 @@ function rebuildFtsIfDictChanged(db: MemoryDatabase) {
     const insertMem = db.prepare('INSERT INTO memory_fts (rowid, seg) VALUES (?, ?)');
     eachRow<{ id: number, text: string }>(
       db,
-      'SELECT id, text FROM memory WHERE id > ? ORDER BY id LIMIT ?',
+      `SELECT id, text FROM memory m WHERE ${usableMemorySql()} AND id > ? ORDER BY id LIMIT ?`,
       (row) => insertMem.run(row.id, segment(row.text)),
     );
 
@@ -260,6 +262,7 @@ export function ingestChatBackups(
   }
 
   const only = groupIds?.length ? new Set(groupIds) : null;
+  const since = historySince();
 
   // 按文件名排序即按群、按日期，同群的 chat_line.id 大致随时间递增
   const files = entries.sort().flatMap((file) => {
@@ -267,6 +270,7 @@ export function ingestChatBackups(
     if (!m) return [];
     const groupId = Number(m[1]);
     if (only && !only.has(groupId)) return [];
+    if (Number(m[2]) < since) return [];
     return [{ file, groupId, dateKey: Number(m[2]) }];
   });
 
@@ -297,6 +301,7 @@ export function ingestChatBackups(
 export function ingestOnStartup() {
   try {
     const t = Date.now();
+    maintainMemory();
     const { files, lines } = ingestChatBackups();
     if (lines > 0) {
       printLog(`[Ingest] 已导入 ${files} 个备份文件 / ${lines} 行，耗时 ${Date.now() - t}ms`);

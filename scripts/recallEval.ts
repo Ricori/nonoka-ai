@@ -1,8 +1,10 @@
 import { embedTexts } from '@/service/llm';
+import Database from 'better-sqlite3';
 import { getMemoryDb, type MemoryDatabase } from '@/modules/aiReply/memory/db';
 import { buildTermQueries, recallChat } from '@/modules/aiReply/memory/retrieve';
 import { queryTerms } from '@/modules/aiReply/memory/segment';
-import { searchSimilar } from '@/modules/aiReply/memory/vector';
+import { blobToVec, searchSimilar } from '@/modules/aiReply/memory/vector';
+import { historySince } from '@/modules/aiReply/memory/policy';
 
 /**
  * 召回质量评测：一组查询跑下来，把「为什么召回的是这几条」拆开量化。
@@ -33,7 +35,8 @@ const LOW_VALUE_CHARS = 4;
 
 const [groupArg, ...rest] = process.argv.slice(2);
 const groupId = Number(groupArg);
-if (!groupId) {
+const storedTopics = rest.includes('--stored-topics');
+if (!groupId && !storedTopics) {
   console.error('用法: npm run memory:eval -- <群号> [--days 60]');
   process.exit(1);
 }
@@ -44,7 +47,43 @@ const days = daysFlag >= 0 ? Number(rest[daysFlag + 1]) : 60;
 const custom = rest.filter((a, i) => !a.startsWith('--') && rest[i - 1] !== '--days');
 const QUERIES = custom.length > 0 ? custom : DEFAULT_QUERIES;
 
-const db: MemoryDatabase = getMemoryDb();
+const db: MemoryDatabase = storedTopics
+  ? new Database('data/memory/nonoka.db', { readonly: true, fileMustExist: true }) : getMemoryDb();
+
+// 离线回放已有话题：复用已存向量，核对能否找回来源原文，不做付费模型调用。
+if (storedTopics) {
+  try {
+    const rows = db.prepare(`SELECT t.group_id, t.summary, t.line_from, t.line_to, e.vec
+      FROM topic t JOIN embedding e ON e.ref_kind = 'topic' AND e.ref_id = t.id
+      WHERE t.date_key >= ? ${groupId ? 'AND t.group_id = ?' : ''}
+      ORDER BY t.group_id, t.date_key, t.id`).all(historySince(), ...(groupId ? [groupId] : [])) as {
+      group_id: number, summary: string, line_from: number, line_to: number, vec: Buffer,
+    }[];
+    let matched = 0;
+    let outsideWindow = 0;
+    let wrongGroup = 0;
+    const count = Math.min(30, rows.length);
+    for (let i = 0; i < count; i++) {
+      const row = rows[Math.floor((i * rows.length) / count)];
+      const hits = await recallChat(row.group_id, { query: row.summary, queryVec: blobToVec(row.vec), days: 45 }, db);
+      if (hits.some((hit) => hit.id >= row.line_from && hit.id <= row.line_to)) matched += 1;
+      for (const hit of hits) {
+        const source = db.prepare('SELECT group_id, date_key FROM chat_line WHERE id = ?').get(hit.id) as { group_id: number, date_key: number };
+        if (source.group_id !== row.group_id) wrongGroup += 1;
+        if (source.date_key < historySince()) outsideWindow += 1;
+      }
+    }
+    console.log(JSON.stringify({
+      samples: count,
+      sourceRecoveredInTop5: matched,
+      outsideWindow,
+      wrongGroup,
+      note: '只读、零模型调用；使用已存话题回放，不能替代独立标注的相关性评测。',
+    }, null, 2));
+    if (outsideWindow || wrongGroup) process.exitCode = 1;
+  } finally { db.close(); }
+  process.exit(process.exitCode ?? 0);
+}
 const line = (s = '') => console.log(s);
 const since = Number(
   new Date(Date.now() - days * 86400000).toISOString().slice(0, 10).replace(/-/g, ''),

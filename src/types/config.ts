@@ -86,6 +86,10 @@ export interface BotConfig {
       extractThreshold?: number;
       /** 同一个人两次抽取之间的最小间隔分钟数，默认 240 */
       extractCooldownMin?: number;
+      /** 所有群每天切话题请求总上限（UTC 日），默认 40，0 关闭。失败也计数。 */
+      topicDailyLimit?: number;
+      /** 只切最近 N 天尚未处理的聊天，默认 45；不能超出 45 天热历史窗口。 */
+      topicLookbackDays?: number;
     };
     /** 画图工具。整块可省略，省略时按代码里的默认值走（默认开启） */
     imageGen?: {

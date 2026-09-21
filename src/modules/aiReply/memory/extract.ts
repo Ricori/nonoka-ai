@@ -6,6 +6,7 @@ import { enqueueEmbedding } from './embedQueue';
 import { splitSpeakerPrefix } from './segment';
 import memoryStore from './store';
 import type { EvidenceMessage } from './store';
+import { usableMemory } from './policy';
 
 /**
  * 记忆写入流水线：攒够一批消息就让 LLM 抽取，再与已有条目调和成增删改操作。
@@ -38,9 +39,6 @@ const MAX_BACKOFF_STEPS = 3;
 /** 去掉标点表情后至少要剩这么多个字，才算一条有信息量的消息 */
 const MIN_INFORMATIVE_CHARS = 4;
 
-/** 引文最多留这么多字。formatMessage 原本给到 90 字，那是给回复用的，抽取用不上这么多 */
-const QUOTE_LIMIT = 20;
-
 /** 抽取失败后隔多久重试。不吃满整个冷却，也不能立刻重来把失败的服务打穿 */
 const RETRY_DELAY_MS = 5 * 60 * 1000;
 
@@ -65,6 +63,12 @@ export function informativeLength(text: string): number {
     .replace(/https?:\/\/\S+/g, '')
     .replace(/[\s\p{P}\p{S}\p{Extended_Pictographic}]/gu, '')
     .length;
+}
+
+/** 自动人物档案只接受明确的本人陈述；宁可少记，转述、问句和引文不用于推断身份。 */
+export function isSelfMemoryCandidate(text: string): boolean {
+  if (/[?？]/.test(text)) return false;
+  return /^(?:我(?!们|朋友|同学|同事|爸|妈|哥|姐|弟|妹|家人|听说|听他|听她|觉得|以为|猜|记得|想问)|本人)(?:是|在|有|没有|没|不|很|比较|喜欢|讨厌|住|读|学|做|从事|工作|毕业|买|养|玩|打|去|来|要|准备|计划|最近|今天|昨天|明天|上周|下周|这周|今年|以前|已经|刚|曾经|目前|现在|一直|平时|通常|最)/.test(text.trim());
 }
 
 interface PendingBuffer {
@@ -199,24 +203,19 @@ class MemoryExtractor {
     buffer.lastSeen = now;
 
     // 昵称是单独传给抽取的，`[昵称]说：` 这截前缀 30 条加起来是白烧的 token
-    const { replyTo, quote, body } = splitSpeakerPrefix(message);
+    const { body } = splitSpeakerPrefix(message);
     const text = body.trim();
 
     // 表情、复读、太短的话直接不收：抽不出东西，却要占一个触发名额。
     // 只看本人说的那句，引文是别人的话，不能拿别人的字数把「？？」放行
-    if (informativeLength(text) < MIN_INFORMATIVE_CHARS || text === buffer.lastText) {
+    if (informativeLength(text) < MIN_INFORMATIVE_CHARS || text === buffer.lastText || !isSelfMemoryCandidate(text)) {
       buffer.skipped += 1;
       return;
     }
     buffer.lastText = text;
 
-    // 收下的回复带一小截引文，否则「我上周就通关了」离了上下文不知道在说什么
-    const kept = quote
-      ? `（回复${replyTo || '某人'}：${quote.slice(0, QUOTE_LIMIT)}）${text}`
-      : text;
-
     buffer.messages.push({
-      groupId, messageId, observedAt, text: kept,
+      groupId, messageId, observedAt, text,
     });
     const cap = this.maxBuffer();
     if (buffer.messages.length > cap) {
@@ -258,7 +257,7 @@ class MemoryExtractor {
       // alias 不送：这批全是本人的发言，从里面抽不出「别人怎么叫他」，
       // 送过去只是让每次 prompt 多背 8 条
       const existing = memoryStore.listUserMemories(userId)
-        .filter((m) => m.kind !== 'alias')
+        .filter((m) => ['trait', 'episode'].includes(m.kind) && !m.verified && !m.pinned && usableMemory(m))
         .map((m) => ({
           id: m.id, kind: m.kind, text: m.text, pinned: m.pinned,
         }));
@@ -292,7 +291,17 @@ class MemoryExtractor {
       // 单群批次记录来源群；跨群混合批次不随意归到最后一个群，记为跨群来源。
       const sourceGroups = new Set(messages.map((m) => m.groupId));
       const sourceGroupId = sourceGroups.size === 1 ? messages[0].groupId : null;
-      const result = memoryStore.applyOps(userId, sourceGroupId, ops);
+      const foreignNames = getMemoryDb().prepare(
+        'SELECT DISTINCT nick FROM group_user_profile WHERE user_id != ? AND nick != ?',
+      ).all(userId, nickName) as { nick: string }[];
+      const safeOps = ops.filter((op) => {
+        if (op.op === 'DELETE') return true;
+        if ((op.confidence ?? 0.6) < 0.7 || !op.text) return false;
+        // 其他群友被写成句子主语时，不把整条事实归给当前用户。
+        return !/^(?:他|她|对方|某人|群友)/.test(op.text)
+          && !foreignNames.some(({ nick }) => nick.length >= 2 && op.text!.startsWith(nick));
+      });
+      const result = memoryStore.applyOps(userId, sourceGroupId, safeOps);
 
       // 只是把已知的事又说了一遍不算学到东西，这种轮次照样该退避
       const learned = result.added.length + result.updated.length + result.deleted.length;

@@ -4,6 +4,7 @@ import { backupDateKey } from '../storage/message';
 import { getMemoryDb, type MemoryDatabase } from './db';
 import { segment, stripSpeakerPrefix, weightedTerms } from './segment';
 import { searchSimilar } from './vector';
+import { HISTORY_DAYS, usableMemorySql } from './policy';
 
 /**
  * 混合检索：字面（FTS5 + BM25）与语义（向量余弦）两路各自召回，再用 RRF 融合。
@@ -19,11 +20,8 @@ const RRF_K = 60;
 const CANDIDATE_LIMIT = 30;
 
 const DEFAULT_LIMIT = 5;
-const DEFAULT_DAYS = 14;
+const DEFAULT_DAYS = HISTORY_DAYS;
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-/** 指定说话人只加权不硬过滤，倍率压在「多命中一路」的量级上 */
-const SPEAKER_BOOST = 1.5;
 
 /** 一个话题最多展开几行原文，否则一段长对话就能把候选池灌满 */
 const TOPIC_EXPAND_LIMIT = 3;
@@ -49,6 +47,8 @@ export interface ChatHit {
   nick: string | null;
   /** 仍带 `[昵称]说：` 前缀，注入时直接可用 */
   text: string;
+  /** 与命中同群同日的相邻原文，明确保留说话人，不把邻居的话当成命中者的事实。 */
+  context?: string[];
 }
 
 export interface MemoryHit {
@@ -71,7 +71,7 @@ interface CommonOptions {
 }
 
 export interface RecallChatOptions extends CommonOptions {
-  /** 加权而非过滤：别人说过的相关内容也进候选，注入时标明是谁说的 */
+  /** 硬过滤主命中；相邻上下文保留各自说话人。 */
   speakerIds?: number[];
   days?: number;
 }
@@ -79,6 +79,7 @@ export interface RecallChatOptions extends CommonOptions {
 export interface RecallMemoryOptions extends CommonOptions {
   /** 硬过滤：问某个人就只要这个人的档案，混进别人的是噪音 */
   aboutUserIds?: number[];
+  overview?: boolean;
 }
 
 export interface TermQuery {
@@ -163,7 +164,7 @@ export interface RankedList {
 export function rrfFuse(lists: RankedList[], k = RRF_K): Map<number, number> {
   const scores = new Map<number, number>();
   lists.forEach(({ ids, weight = 1 }) => {
-    ids.forEach((id, i) => {
+    [...new Set(ids)].forEach((id, i) => {
       scores.set(id, (scores.get(id) ?? 0) + weight / (k + i + 1));
     });
   });
@@ -186,19 +187,20 @@ function formatDate(dateKey: number) {
 
 // ========== 聊天记录 ==========
 
-function literalChatLists(db: MemoryDatabase, groupId: number, query: string, since: number): RankedList[] {
+function literalChatLists(db: MemoryDatabase, groupId: number, query: string, since: number, speakerIds?: number[]): RankedList[] {
   // CROSS JOIN 强制 FTS 当外层。让 SQLite 自己挑的话它会拿 chat_line 走索引当外层、
   // 再对每一行重跑一次 MATCH，6 万行的群实测 3.7s；换成这样是 2ms
   const stmt = db.prepare(`
     SELECT c.id FROM chat_fts f CROSS JOIN chat_line c ON c.id = f.rowid
     WHERE f.chat_fts MATCH ? AND c.group_id = ? AND c.date_key >= ? AND c.user_id != 0
+      ${speakerIds?.length ? `AND c.user_id IN (${placeholders(speakerIds.length)})` : ''}
     ORDER BY bm25(chat_fts) LIMIT ?
   `);
 
   return buildTermQueries(query).flatMap(({ match, weight }) => {
     try {
       // bm25() 返回负值，升序即相关性降序。bot 自己的发言不算旧账
-      const rows = stmt.all(match, groupId, since, CANDIDATE_LIMIT) as { id: number }[];
+      const rows = stmt.all(match, groupId, since, ...(speakerIds ?? []), CANDIDATE_LIMIT) as { id: number }[];
       return rows.length > 0 ? [{ ids: rows.map((r) => r.id), weight }] : [];
     } catch (e) {
       // MATCH 串里混进 FTS5 语法字符时会抛，检索不到不该拖垮回复
@@ -212,10 +214,12 @@ function literalChatLists(db: MemoryDatabase, groupId: number, query: string, si
  * 本群这段时间内的话题 id。向量检索是全库扫的，不先收窄的话候选池会被别的群吃掉——
  * 实测「有人养猫吗」的 top30 里一半是别的群的话题，过滤完本群只剩十几个
  */
-function groupTopicIds(db: MemoryDatabase, groupId: number, since: number): Set<number> {
+function groupTopicIds(db: MemoryDatabase, groupId: number, since: number, speakerIds?: number[]): Set<number> {
   const rows = db.prepare(
-    'SELECT id FROM topic WHERE group_id = ? AND date_key >= ?',
-  ).all(groupId, since) as { id: number }[];
+    `SELECT t.id FROM topic t WHERE group_id = ? AND date_key >= ?
+      ${speakerIds?.length ? `AND EXISTS (SELECT 1 FROM chat_line c WHERE c.group_id = t.group_id
+        AND c.id BETWEEN t.line_from AND t.line_to AND c.user_id IN (${placeholders(speakerIds.length)}))` : ''}`,
+  ).all(groupId, since, ...(speakerIds ?? [])) as { id: number }[];
   return new Set(rows.map((r) => r.id));
 }
 
@@ -224,23 +228,30 @@ function groupTopicIds(db: MemoryDatabase, groupId: number, since: number): Set<
  *
  * 取开头几行是不行的：话题跨度从几行到近百行不等，跨 58 行的「带猫看病」话题
  * 取开头 8 行，捞回来的是同一段对话里紧挨着的加班和痛车，猫在别处。
- * 按查询里实义字的重合度排序，跨度越大的话题收益越大
+ * 完整词优先，单字重合仅作弱兜底，邻近上下文另行返回
  */
 function pickTopicLines(
   db: MemoryDatabase,
   topic: { line_from: number, line_to: number },
   groupId: number,
-  chars: Set<string>,
+  query: string,
+  speakerIds?: number[],
 ): number[] {
   const rows = db.prepare(
-    'SELECT id, text FROM chat_line WHERE id BETWEEN ? AND ? AND group_id = ? AND user_id != 0 ORDER BY id',
-  ).all(topic.line_from, topic.line_to, groupId) as { id: number, text: string }[];
+    `SELECT id, text FROM chat_line WHERE id BETWEEN ? AND ? AND group_id = ? AND user_id != 0
+      ${speakerIds?.length ? `AND user_id IN (${placeholders(speakerIds.length)})` : ''} ORDER BY id`,
+  ).all(topic.line_from, topic.line_to, groupId, ...(speakerIds ?? [])) as { id: number, text: string }[];
+  const terms = weightedTerms(query);
+  const chars = new Set(terms.map((term) => term.term).join(''));
 
   // 重合度相同的保持对话顺序，短话题的表现和以前一致
-  return rows
+  return rows.filter((row) => hasContent(row.text))
     .map((r, i) => {
+      const body = stripSpeakerPrefix(r.text);
       let hit = 0;
-      chars.forEach((c) => { if (r.text.includes(c)) hit += 1; });
+      // 整词优先，字重合只作弱兜底；昵称和引文前缀不能给正文加分。
+      terms.forEach(({ term, weight }) => { if (body.includes(term)) hit += 10 * weight; });
+      chars.forEach((c) => { if (body.includes(c)) hit += 0.1; });
       return { id: r.id, hit, i };
     })
     .sort((a, b) => b.hit - a.hit || a.i - b.i)
@@ -254,8 +265,9 @@ function semanticChatIds(
   query: string,
   vec: Float32Array,
   since: number,
+  speakerIds?: number[],
 ): number[] {
-  const allow = groupTopicIds(db, groupId, since);
+  const allow = groupTopicIds(db, groupId, since, speakerIds);
   if (allow.size === 0) return [];
 
   const topics = searchSimilar(db, 'topic', vec, CANDIDATE_LIMIT, allow).filter((t) => t.score >= MIN_SIMILARITY);
@@ -265,14 +277,13 @@ function semanticChatIds(
     `SELECT id, line_from, line_to FROM topic WHERE id IN (${placeholders(topics.length)})`,
   ).all(...topics.map((t) => t.refId)) as { id: number, line_from: number, line_to: number }[];
 
-  // 挑行用的是检索词里的字：整词匹配不上「养猫」对「带猫看病」，按字反而认得出
+  // 话题只用于定位原文范围，正文排序不拿昵称凑相关性。
   const byId = new Map(rows.map((r) => [r.id, r]));
-  const chars = new Set(weightedTerms(query).map((t) => t.term).join(''));
 
   // 按话题的相似度名次依次展开，同一话题内按相关性排，靠前的行拿到更好的名次
   return topics.flatMap(({ refId }) => {
     const topic = byId.get(refId);
-    return topic ? pickTopicLines(db, topic, groupId, chars) : [];
+    return topic ? pickTopicLines(db, topic, groupId, query, speakerIds) : [];
   });
 }
 
@@ -302,6 +313,21 @@ function fetchChatLines(db: MemoryDatabase, ids: number[]) {
   return new Map(rows.map((r) => [r.id, r]));
 }
 
+function adjacentContext(db: MemoryDatabase, groupId: number, row: { id: number, date_key: number }): string[] {
+  return ['<', '>'].flatMap((operator) => {
+    const neighbor = db.prepare(`SELECT text, user_id FROM chat_line
+      WHERE group_id = ? AND date_key = ? AND id ${operator} ?
+      ORDER BY id ${operator === '<' ? 'DESC' : 'ASC'} LIMIT 1`)
+      .get(groupId, row.date_key, row.id) as { text: string, user_id: number } | undefined;
+    if (!neighbor || !hasContent(neighbor.text)) return [];
+    return [`${neighbor.user_id === 0 ? '[机器人] ' : ''}${neighbor.text.slice(0, 120)}`];
+  });
+}
+
+export function isOverviewQuery(query: string): boolean {
+  return /^(?:(?:个人|人物)?(?:档案|概况|简介|介绍|印象)|长期印象|性格和关系|(?:他|她|这个人|这人)?(?:是谁|是什么样的人|是个什么样的人))[？?。\s]*$/.test(query.trim());
+}
+
 /** 在某群的聊天记录里混合检索，按相关性降序返回最多 limit 条 */
 export async function recallChat(
   groupId: number,
@@ -311,30 +337,38 @@ export async function recallChat(
   const {
     query, speakerIds, days = DEFAULT_DAYS, limit = DEFAULT_LIMIT,
   } = opts;
-  const since = dateKeySince(days);
+  const since = dateKeySince(Number.isFinite(days) && days > 0 ? Math.min(days, HISTORY_DAYS) : HISTORY_DAYS);
 
-  const literal = literalChatLists(db, groupId, query, since);
+  const literal = literalChatLists(db, groupId, query, since, speakerIds);
   const vec = await resolveQueryVec(opts);
-  const semantic = vec ? semanticChatIds(db, groupId, query, vec, since) : [];
+  const semantic = vec ? semanticChatIds(db, groupId, query, vec, since, speakerIds) : [];
   if (literal.length === 0 && semantic.length === 0) return [];
 
   const scores = rrfFuse([...literal, { ids: semantic }]);
   const lines = fetchChatLines(db, [...scores.keys()]);
-  const boost = speakerIds?.length ? new Set(speakerIds) : null;
 
   // 复读在群里很常见，「玩什么」连发三条会占掉三个名额，注入时只留最相关的那条
   const seen = new Set<string>();
+  const topicCounts = new Map<number, number>();
+  const topicOf = db.prepare(`SELECT id FROM topic WHERE group_id = ? AND date_key >= ?
+    AND ? BETWEEN line_from AND line_to ORDER BY (line_to - line_from), id LIMIT 1`);
 
   return [...scores.entries()]
     .flatMap(([id, score]) => {
       const row = lines.get(id);
       if (!row || !hasContent(row.text)) return [];
-      return [{ row, score: boost?.has(row.user_id) ? score * SPEAKER_BOOST : score }];
+      return [{ row, score }];
     })
     .sort((a, b) => b.score - a.score || b.row.id - a.row.id)
     .filter(({ row }) => {
-      const body = stripSpeakerPrefix(row.text);
+      const body = `${row.user_id}:${stripSpeakerPrefix(row.text)}`;
       if (seen.has(body)) return false;
+      const topic = topicOf.get(groupId, since, row.id) as { id: number } | undefined;
+      if (topic) {
+        const used = topicCounts.get(topic.id) ?? 0;
+        if (used >= TOPIC_EXPAND_LIMIT) return false;
+        topicCounts.set(topic.id, used + 1);
+      }
       seen.add(body);
       return true;
     })
@@ -345,6 +379,7 @@ export async function recallChat(
       userId: row.user_id,
       nick: row.nick,
       text: row.text,
+      context: adjacentContext(db, groupId, row),
     }));
 }
 
@@ -352,7 +387,7 @@ export async function recallChat(
 
 function memoryFilter(aboutUserIds?: number[]) {
   // 用户档案按 QQ 号跨群共享；memory.group_id 只记录最初来源群，不控制可见性。
-  const where = ['m.superseded_by IS NULL'];
+  const where = [usableMemorySql()];
   const params: number[] = [];
 
   if (aboutUserIds?.length) {
@@ -408,7 +443,7 @@ function fallbackMemories(db: MemoryDatabase, aboutUserIds: number[], limit: num
 }
 
 /** 指定这几个人可见的全部记忆 id，用来把向量检索的范围先收窄 */
-function ownedMemoryIds(db: MemoryDatabase, aboutUserIds: number[]): Set<number> {
+function ownedMemoryIds(db: MemoryDatabase, aboutUserIds?: number[]): Set<number> {
   const { where, params } = memoryFilter(aboutUserIds);
   const rows = db.prepare(`SELECT m.id FROM memory m WHERE ${where}`).all(...params) as { id: number }[];
   return new Set(rows.map((r) => r.id));
@@ -444,14 +479,14 @@ export async function recallMemory(
   const vec = await resolveQueryVec(opts);
   // 指定了人就把向量检索的范围先收到这些人的条目上，
   // 否则 top-30 会被别人的记忆占满，过滤完一条不剩
-  const allow = aboutUserIds?.length ? ownedMemoryIds(db, aboutUserIds) : undefined;
+  const allow = ownedMemoryIds(db, aboutUserIds);
   const semantic = vec
     ? searchSimilar(db, 'memory', vec, CANDIDATE_LIMIT, allow)
       .filter((h) => h.score >= MIN_SIMILARITY).map((h) => h.refId)
     : [];
 
   const scores = rrfFuse([...literal, { ids: semantic }]);
-  // 语义那一路只按 owner 收窄，取详情时统一排除已失效条目
+  // 详情再做一次有效性检查，避免候选计算期间发生更新。
   const found = fetchMemories(db, [...scores.keys()], aboutUserIds);
 
   const ranked = [...scores.entries()]
@@ -464,7 +499,7 @@ export async function recallMemory(
     .map(({ hit }) => hit);
 
   // 兜底要看最终结果而不是候选：候选非空但详情已失效的情况同样算空手
-  if (ranked.length === 0 && aboutUserIds?.length) {
+  if (ranked.length === 0 && aboutUserIds?.length && (opts.overview === true || isOverviewQuery(query))) {
     return fallbackMemories(db, aboutUserIds, limit);
   }
   return ranked;

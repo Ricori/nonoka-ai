@@ -2,6 +2,7 @@ import { embedTexts } from '@/service/llm';
 import { printError, printLog } from '@/utils/print';
 import { getMemoryDb, type MemoryDatabase } from './db';
 import { saveEmbeddings } from './vector';
+import { usableMemorySql } from './policy';
 
 /**
  * 记忆条目的向量化队列。
@@ -55,7 +56,7 @@ async function flushEmbedQueue(db: MemoryDatabase = getMemoryDb()): Promise<numb
   try {
     // 期间被软删或淘汰掉的条目不用再算向量
     const rows = db.prepare(
-      `SELECT id, text FROM memory WHERE superseded_by IS NULL AND id IN (${batch.map(() => '?').join(', ')})`,
+      `SELECT id, text FROM memory m WHERE ${usableMemorySql()} AND id IN (${batch.map(() => '?').join(', ')})`,
     ).all(...batch) as { id: number, text: string }[];
     if (rows.length === 0) return 0;
 
@@ -67,7 +68,7 @@ async function flushEmbedQueue(db: MemoryDatabase = getMemoryDb()): Promise<numb
       return 0;
     }
 
-    const n = saveEmbeddings(db, 'memory', rows.map((r, i) => ({ refId: r.id, vec: vectors[i] })));
+    const n = saveEmbeddings(db, 'memory', rows.map((r, i) => ({ refId: r.id, vec: vectors[i], sourceText: r.text })));
     printLog(`[EmbedQueue] 已向量化 ${n} 条记忆`);
     return n;
   } catch (e) {

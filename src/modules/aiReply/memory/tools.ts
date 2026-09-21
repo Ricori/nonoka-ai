@@ -3,6 +3,7 @@ import type { ToolDef } from '@/service/llm';
 import aliasIndex from '../history/aliasIndex';
 import { recallChat, recallMemory } from './retrieve';
 import memoryStore from './store';
+import { HISTORY_DAYS } from './policy';
 
 /**
  * 给模型用的召回工具。
@@ -37,6 +38,7 @@ export const MEMORY_TOOLS: ToolDef[] = [
       properties: {
         query: { type: 'string', description: '要查什么，用自然语言描述，例如「专业和学校」「喜欢的游戏」' },
         about: { type: 'string', description: '要查哪位群友的档案，填群里对他的称呼。不填就在所有人里找' },
+        overview: { type: 'boolean', description: '仅在需要整体人物介绍时设 true；查询学校、工作等具体事实时不要开启' },
       },
       required: ['query'],
     },
@@ -50,7 +52,7 @@ export const MEMORY_TOOLS: ToolDef[] = [
       properties: {
         query: { type: 'string', description: '要找什么内容，用自然语言描述，例如「上次说的那家拉面店」' },
         speaker: { type: 'string', description: '限定是谁说的，填群里对他的称呼。不填就查所有人' },
-        days: { type: 'number', description: '往前翻多少天，默认 14。问「很久以前」时可以放大到 90' },
+        days: { type: 'number', description: '往前翻多少天，默认及上限均为 45。更早的原文已归档，不保证记得' },
       },
       required: ['query'],
     },
@@ -59,13 +61,14 @@ export const MEMORY_TOOLS: ToolDef[] = [
 
 /** 名字 -> userId。认不出返回空数组 */
 function resolveName(groupId: number, name: string): number[] {
-  return aliasIndex.resolve(groupId, name);
+  return aliasIndex.resolve(groupId, name, true);
 }
 
 function formatChat(hits: Awaited<ReturnType<typeof recallChat>>): string {
   if (hits.length === 0) return '没有找到相关的历史记录。';
   // 带上日期和说话人，让模型知道这是谁什么时候说的，才好化用
-  return hits.map((h) => `${h.date} ${truncate(h.text)}`).join('\n');
+  return hits.map((h) => `${h.date} 命中：${truncate(h.text)}${h.context?.length
+    ? `\n  相邻上下文（各自说话人，不代表命中者观点）：${h.context.map(truncate).join(' / ')}` : ''}`).join('\n');
 }
 
 function formatMemory(groupId: number, hits: Awaited<ReturnType<typeof recallMemory>>): string {
@@ -78,7 +81,7 @@ function formatMemory(groupId: number, hits: Awaited<ReturnType<typeof recallMem
 
 /** 本地执行一次工具调用，任何情况都返回一段给模型看的文本，不抛异常 */
 export async function runMemoryTool(groupId: number, name: string, rawInput: unknown): Promise<string> {
-  const input = (rawInput ?? {}) as { query?: string, about?: string, speaker?: string, days?: number };
+  const input = (rawInput ?? {}) as { query?: string, about?: string, speaker?: string, days?: number, overview?: boolean };
   const query = typeof input.query === 'string' ? input.query.trim() : '';
   // 每条出口都要留日志：只在成功时打印的话，「认不出名字」这种失败在日志里是隐形的
   if (!query) {
@@ -94,8 +97,11 @@ export async function runMemoryTool(groupId: number, name: string, rawInput: unk
         printLog(`[MemoryTool] recall_memory(${query}, about=${about}) -> 名字未解析`);
         return UNKNOWN_NAME(about);
       }
+      if (aboutUserIds && aboutUserIds.length > 1) return '这个称呼对应多位群友，请提供完整昵称，暂不混合他们的档案。';
 
-      const hits = await recallMemory(groupId, { query, aboutUserIds, limit: TOOL_LIMIT });
+      const hits = await recallMemory(groupId, {
+        query, aboutUserIds, limit: TOOL_LIMIT, overview: input.overview === true,
+      });
       printLog(`[MemoryTool] recall_memory(${query}${about ? `, about=${about}` : ''}) -> ${hits.length} 条`);
       return formatMemory(groupId, hits);
     }
@@ -107,8 +113,9 @@ export async function runMemoryTool(groupId: number, name: string, rawInput: unk
         printLog(`[MemoryTool] recall_chat(${query}, speaker=${speaker}) -> 名字未解析`);
         return UNKNOWN_NAME(speaker);
       }
+      if (speakerIds && speakerIds.length > 1) return '这个称呼对应多位群友，请提供完整昵称。';
 
-      const days = typeof input.days === 'number' && input.days > 0 ? Math.min(input.days, 365) : undefined;
+      const days = typeof input.days === 'number' && input.days > 0 ? Math.min(input.days, HISTORY_DAYS) : undefined;
       const hits = await recallChat(groupId, {
         query, speakerIds, days, limit: TOOL_LIMIT,
       });

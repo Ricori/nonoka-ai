@@ -138,7 +138,12 @@ const BASELINE = `
  * 基线之后的增量迁移，下标 + BASELINE_VERSION + 1 即为版本号。
  * 已经发布过的条目只能追加、不能修改，否则老库和新库会长成两个样子
  */
-const MIGRATIONS: string[] = [];
+const MIGRATIONS: string[] = [
+  `ALTER TABLE memory ADD COLUMN verified INTEGER NOT NULL DEFAULT 0;
+   UPDATE memory SET verified = 1 WHERE pinned = 1 OR source = '管理面板';
+   -- 旧人物向量没有文本版本，无法证明是否已过期；只重建收紧后仍有效的少量人物条目。
+   DELETE FROM embedding WHERE ref_kind = 'memory';`,
+];
 
 const LATEST_VERSION = BASELINE_VERSION + MIGRATIONS.length;
 

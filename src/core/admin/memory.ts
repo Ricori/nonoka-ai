@@ -385,14 +385,15 @@ const PAGE = `<!doctype html>
       pin.checked = it.pinned;
       cell().appendChild(pin);
 
-      cell('meta').textContent = it.hits + ' 次 · ' + fmtDate(it.lastSeen);
+      const quarantined = (it.kind === 'alias' || it.kind === 'relation') && !it.verified && !it.pinned;
+      cell('meta').textContent = quarantined ? '未确认，已隔离' : it.hits + ' 次 · ' + fmtDate(it.lastSeen);
 
       const ops = cell('ops');
       const evidence = document.createElement('button');
       evidence.textContent = '原话';
       evidence.onclick = () => toggleEvidence(it, tr, evidence);
       const save = document.createElement('button');
-      save.textContent = '保存';
+      save.textContent = quarantined ? '确认并保存' : '保存';
       save.onclick = () => {
         setStatus('保存中…', true);
         post('/api/memory/update', {
@@ -703,6 +704,7 @@ function listBlacklist() {
 
 /** alias 立刻并进昵称索引，返回 false 表示这人还没在日志里露过面，只能等重启 */
 function syncAlias(kind: MemoryKind, userId: number, text: string): boolean {
+  aliasIndex.invalidate();
   return kind !== 'alias' || aliasIndex.noteManualAlias(userId, text);
 }
 
@@ -870,7 +872,7 @@ export async function handleMemoryRoute(
 
     if (!memoryStore.removeMemory(id)) sendJson(res, 404, { error: '条目不存在或已被删除' });
     else {
-      // 昵称索引里的旧别名要等重启才消失，删别名比加别名影响小，先不为它加重建入口
+      aliasIndex.invalidate();
       printLog(`[AdminPanel] 删除记忆 #${id}`);
       sendJson(res, 200, { ok: true });
     }

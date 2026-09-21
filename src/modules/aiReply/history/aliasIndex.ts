@@ -3,6 +3,7 @@ import { backupDateKey } from '../storage/message';
 import { getMemoryDb } from '../memory/db';
 import memoryStore from '../memory/store';
 import { stripSpeakerPrefix } from '../memory/segment';
+import { HISTORY_DAYS } from '../memory/policy';
 import { matchAlias, normalizeAlias, normalizeText } from './nameMatch';
 
 /**
@@ -22,7 +23,7 @@ import { matchAlias, normalizeAlias, normalizeText } from './nameMatch';
 /**
  * 只看这么多天内的记录。更早的昵称基本没人再叫了，留着只会扩大误命中面
  */
-const INDEX_DAYS = 180;
+const INDEX_DAYS = HISTORY_DAYS;
 
 /** 一条消息最多认出几个人，多了大概率是误命中 */
 const MAX_CANDIDATES = 4;
@@ -40,6 +41,13 @@ class AliasIndex {
 
   /** 日志建底是一次性的，首次解析时才做，避免拖慢启动 */
   private built = false;
+
+  private builtDate = '';
+
+  invalidate() {
+    this.byUser.clear();
+    this.built = false;
+  }
 
   private entryOf(userId: number): UserAliases {
     let entry = this.byUser.get(userId);
@@ -114,6 +122,7 @@ class AliasIndex {
   /** 查 chat_line 建底，失败不致命：索引空着只是认不出人，不影响回复 */
   private build() {
     this.built = true;
+    this.builtDate = backupDateKey();
     const oldest = Number(backupDateKey(new Date(Date.now() - INDEX_DAYS * 24 * 60 * 60 * 1000)));
 
     try {
@@ -138,11 +147,17 @@ class AliasIndex {
    * 从一条群消息里认出被提到的群友，按匹配得分降序返回 userId。
    * 只返回和本群有过交集的人；有没有档案可注入由调用方判断
    */
-  resolve(groupId: number, message: string): number[] {
+  resolve(groupId: number, message: string, preferExact = false): number[] {
+    if (this.built && this.builtDate !== backupDateKey()) this.invalidate();
     if (!this.built) this.build();
 
     const text = normalizeText(stripSpeakerPrefix(message));
     if (!text) return [];
+    if (preferExact) {
+      const exact = [...this.byUser.entries()].filter(([, entry]) => entry.groups.has(groupId)
+        && entry.aliases.has(normalizeAlias(message))).map(([id]) => id);
+      if (exact.length) return exact;
+    }
 
     const scored: { userId: number; score: number; lastSeen: number }[] = [];
     this.byUser.forEach((entry, userId) => {
