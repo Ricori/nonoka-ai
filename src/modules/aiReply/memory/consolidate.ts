@@ -1,5 +1,6 @@
 import { embedTexts } from '@/service/llm';
 import { printError, printLog } from '@/utils/print';
+import { sleep } from '@/utils/function';
 import { getMemoryDb, type MemoryDatabase } from './db';
 import { ingestChatBackups } from './ingest';
 import memoryStore from './store';
@@ -10,14 +11,16 @@ import { maintainMemory } from './maintenance';
 
 /**
  * 定时巩固：导入新日志、切语义窗口、补齐缺失的向量，再跑一遍淘汰。
- * 全程不调 chat 模型，只花 embedding
  */
 
-/** 向量化的批大小，服务端单次上限 200 */
-const EMBED_BATCH = 200;
+/** 向量化的批大小，批太大会 exceeded CPU */
+const EMBED_BATCH = 20;
 
-/** 窗口正文长，批小一点，别让单次请求撞上超时 */
-const WINDOW_EMBED_BATCH = 100;
+/** 批间留点空 */
+const EMBED_INTERVAL = 300;
+
+/** 连续失败这么多批就说明服务在拒，停掉本轮等下次 */
+const MAX_CONSECUTIVE_FAILS = 3;
 
 /** 补向量最多跑几轮。换模型后要把 45 天内的全部重算，每轮只捞一批，得循环 */
 const BACKFILL_ROUNDS = 30;
@@ -54,25 +57,31 @@ export interface ConsolidationRun {
   error: string | null;
 }
 
-/** 分批向量化并入库，返回成功条数 */
+/** 分批向量化并入库，返回成功条数；aborted 表示连续失败提前停了 */
 async function embedAll(
   db: MemoryDatabase,
   refKind: RefKind,
   rows: { id: number, text: string }[],
-): Promise<number> {
-  const size = refKind === 'window' ? WINDOW_EMBED_BATCH : EMBED_BATCH;
+): Promise<{ done: number, aborted: boolean }> {
   let done = 0;
-  for (let i = 0; i < rows.length; i += size) {
-    const batch = rows.slice(i, i + size);
+  let fails = 0;
+  for (let i = 0; i < rows.length; i += EMBED_BATCH) {
+    if (i > 0) await sleep(EMBED_INTERVAL);
+    const batch = rows.slice(i, i + EMBED_BATCH);
     const result = await embedTexts(batch.map((r) => r.text));
     if (!result) {
       // 整批失败就跳过，下轮巩固还会把它们当成缺向量的重新捞出来
       printError(`[Consolidate] ${batch.length} 条 ${refKind} 向量化失败`);
+      if (++fails >= MAX_CONSECUTIVE_FAILS) {
+        printError(`[Consolidate] 连续 ${fails} 批向量化失败，停止本轮补向量`);
+        return { done, aborted: true };
+      }
     } else {
+      fails = 0;
       done += saveEmbeddings(db, refKind, batch.map((r, j) => ({ refId: r.id, vec: result.vectors[j], sourceText: r.text })), result.model);
     }
   }
-  return done;
+  return { done, aborted: false };
 }
 
 const MISSING_MEMORY_SQL = () => `FROM memory m
@@ -90,20 +99,23 @@ export function getConsolidationBacklog(db: MemoryDatabase = getMemoryDb()): Con
   return { windows: w.n, memories: m.n, oldestDate: w.oldest };
 }
 
-async function backfillOnce(db: MemoryDatabase): Promise<number> {
+async function backfillOnce(db: MemoryDatabase): Promise<{ done: number, aborted: boolean }> {
   const memories = db.prepare(`SELECT m.id, m.text ${MISSING_MEMORY_SQL()} ORDER BY m.id LIMIT 500`).all() as { id: number, text: string }[];
   const windows = db.prepare(`SELECT w.id, w.text ${MISSING_WINDOW_SQL()} ORDER BY w.id LIMIT 2000`).all() as { id: number, text: string }[];
-  return await embedAll(db, 'memory', memories) + await embedAll(db, 'window', windows);
+  const m = await embedAll(db, 'memory', memories);
+  if (m.aborted) return m;
+  const w = await embedAll(db, 'window', windows);
+  return { done: m.done + w.done, aborted: w.aborted };
 }
 
 /** 补齐缺向量的记忆和窗口。服务不可用时漏掉的、换模型后被清空的，都靠这里兜住 */
 async function backfillMissingVectors(db: MemoryDatabase): Promise<number> {
   let total = 0;
   for (let round = 0; round < BACKFILL_ROUNDS; round++) {
-    const n = await backfillOnce(db);
-    // 缺的都补完了，或这一轮全部失败，都别再空转
-    if (n === 0) break;
-    total += n;
+    const { done, aborted } = await backfillOnce(db);
+    total += done;
+    // 缺的都补完了，或服务在拒，都别再空转
+    if (done === 0 || aborted) break;
   }
   return total;
 }

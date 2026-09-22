@@ -152,7 +152,8 @@ export async function embedTexts(texts: string[]): Promise<EmbedResult | null> {
   const ret = await Axios.post(getServiceUrl('/llm/embed'), { texts }, {
     timeout: COMMON_TIMEOUT,
   }).catch((e) => {
-    printError(`[LLM embed error] ${e.message}`);
+    const body = e.response?.data;
+    printError(`[LLM embed error] ${e.message}${body ? ` ${String(typeof body === 'string' ? body : JSON.stringify(body)).slice(0, 200)}` : ''}`);
     return null;
   });
 

@@ -17,8 +17,8 @@ const BATCH_SIZE = 20;
 /** 没攒够也不能一直等，最多拖这么久 */
 const FLUSH_DELAY = 15 * 1000;
 
-/** 服务端单次上限，超了会被 400 */
-const MAX_PER_REQUEST = 200;
+/** 单次别超这个数，积压时整批发大了会撞 503 */
+const MAX_PER_REQUEST = 30;
 
 const pending = new Set<number>();
 let timer: NodeJS.Timeout | null = null;
