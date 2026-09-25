@@ -46,18 +46,25 @@ class NonokaBot extends NonokaCore {
    * @param {string} msg 要发送的内容
    * @param {string} atUser 可选，要at的qq
    * @param {string} plainText 消息内容是否作为纯文本发送
+   * @returns 发送成功返回 message_id，失败返回 undefined（不需要时可不 await）
    */
-  async sendGroupMsg(groupId: number, msg: string, atUser?: number | string, plainText?: boolean) {
-    if (msg.length === 0) return;
+  async sendGroupMsg(groupId: number, msg: string, atUser?: number | string, plainText?: boolean): Promise<number | undefined> {
+    if (msg.length === 0) return undefined;
     const prefix = atUser ? `${getAtCode(`${atUser}`)} ` : '';
     if (this.debugMode) {
       printLog(`[Send Group Msg] ${prefix}${msg}`);
     }
-    this.fireCall('send_group_msg', {
-      group_id: groupId,
-      message: `${prefix}${msg}`,
-      auto_escape: !!plainText,
-    });
+    try {
+      const res = await this.nonokaWS.call('send_group_msg', {
+        group_id: groupId,
+        message: `${prefix}${msg}`,
+        auto_escape: !!plainText,
+      });
+      return res.retcode === 0 ? res.data?.message_id : undefined;
+    } catch (e) {
+      printError(`[WS Call Error][send_group_msg] ${e}`);
+      return undefined;
+    }
   }
 
   /** 发送简单消息 (兼容群聊私聊)
