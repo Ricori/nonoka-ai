@@ -33,7 +33,7 @@ async function checkYtLive(channelName: string, groupIds: number[]) {
     msgTextArr.push(`${status.title ?? '直播'} 开始了！`);
     if (status.thumbnail) msgTextArr.push(getImgCode(rewriteToCDN(status.thumbnail)));
     msgTextArr.push(`直播链接：https://www.youtube.com/watch?v=${status.videoId}`);
-    msgTextArr.push(`实时翻译：https://live.nonoka.online/live?channel=@${channelName}`);
+    msgTextArr.push(`实时翻译：https://nonoka.live/live?channel=@${channelName}`);
     const msg = msgTextArr.join('\n');
     printLog(`[ytLiveTask] Pushing live notification for channel ${channelName} (videoId: ${status.videoId}) to groups: ${groupIds.join(', ')}`);
     groupIds.forEach((groupId) => {
@@ -58,7 +58,7 @@ const task = new AsyncTask('ytLiveTask', async () => {
 });
 
 const YtLivePushJob: NonokaJob = {
-  job: new SimpleIntervalJob({ seconds: 120 }, task, { id: 'ytLivePush', preventOverrun: true }),
+  job: new SimpleIntervalJob({ seconds: 180 }, task, { id: 'ytLivePush', preventOverrun: true }),
 };
 
 export default YtLivePushJob;
