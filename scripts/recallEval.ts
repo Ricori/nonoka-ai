@@ -1,6 +1,6 @@
 import { embedTexts } from '@/service/llm';
 import { getMemoryDb } from '@/modules/aiReply/memory/db';
-import { MIN_SIMILARITY, buildTermQueries, recallChat } from '@/modules/aiReply/memory/retrieve';
+import { CHAT_MIN_SIMILARITY as MIN_SIMILARITY, buildTermQueries, recallChat } from '@/modules/aiReply/memory/retrieve';
 import { queryTerms } from '@/modules/aiReply/memory/segment';
 import { searchSimilar } from '@/modules/aiReply/memory/vector';
 

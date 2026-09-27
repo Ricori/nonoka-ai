@@ -1,7 +1,8 @@
 import { printLog } from '@/utils/print';
 import type { ToolDef } from '@/service/llm';
 import aliasIndex from '../history/aliasIndex';
-import { recallChat, recallMemory } from './retrieve';
+import { recallChatEvidence, recallMemoryEvidence } from './recallEvidence';
+import { formatEvidence } from './evidence';
 import memoryStore from './store';
 import { HISTORY_DAYS } from './policy';
 
@@ -17,16 +18,6 @@ const TOOL_LIMIT = 5;
 
 /** 名字解析不出人时的兜底文案，得让模型知道是没认出人而不是没记录 */
 const UNKNOWN_NAME = (name: string) => `没有找到叫「${name}」的群友，可能是名字记错了。`;
-
-/**
- * 单条召回结果的长度上限。群友粘的长公告是一条消息，
- * 整段塞回去会把上下文吃光，截断到够判断相关性即可
- */
-const MAX_HIT_CHARS = 120;
-
-function truncate(text: string): string {
-  return text.length > MAX_HIT_CHARS ? `${text.slice(0, MAX_HIT_CHARS)}…` : text;
-}
 
 export const MEMORY_TOOLS: ToolDef[] = [
   {
@@ -74,21 +65,6 @@ function resolveName(groupId: number, name: string): number[] {
   return aliasIndex.resolve(groupId, name, true);
 }
 
-function formatChat(hits: Awaited<ReturnType<typeof recallChat>>): string {
-  if (hits.length === 0) return '没有找到相关的历史记录。';
-  // 带上日期和说话人，让模型知道这是谁什么时候说的，才好化用
-  return hits.map((h) => `${h.date} 命中：${truncate(h.text)}${h.context?.length
-    ? `\n  相邻上下文（各自说话人，不代表命中者观点）：${h.context.map(truncate).join(' / ')}` : ''}`).join('\n');
-}
-
-function formatMemory(groupId: number, hits: Awaited<ReturnType<typeof recallMemory>>): string {
-  if (hits.length === 0) return '没有找到相关的档案。';
-  return hits.map((h) => {
-    const nick = memoryStore.getNickName(h.ownerId, groupId);
-    return `${nick ? `[${nick}] ` : ''}${h.text}`;
-  }).join('\n');
-}
-
 /** 本地执行一次工具调用，任何情况都返回一段给模型看的文本，不抛异常 */
 export async function runMemoryTool(groupId: number, name: string, rawInput: unknown): Promise<string> {
   const input = (rawInput ?? {}) as {
@@ -116,11 +92,14 @@ export async function runMemoryTool(groupId: number, name: string, rawInput: unk
       }
       if (aboutUserIds && aboutUserIds.length > 1) return '这个称呼对应多位群友，请提供完整昵称，暂不混合他们的档案。';
 
-      const hits = await recallMemory(groupId, {
+      const result = await recallMemoryEvidence(groupId, {
         query, keywords, aboutUserIds, limit: TOOL_LIMIT, overview: input.overview === true,
       });
-      printLog(`[MemoryTool] recall_memory(${query}${about ? `, about=${about}` : ''}${kwLog}) -> ${hits.length} 条`);
-      return formatMemory(groupId, hits);
+      printLog(`[MemoryTool] recall_memory(${query}${about ? `, about=${about}` : ''}${kwLog}) -> ${result.hits.length} 条，证据状态=${result.status}`);
+      return formatEvidence(result, (h) => {
+        const nick = memoryStore.getNickName(h.ownerId, groupId);
+        return nick ? `[${nick}]` : `人物${h.ownerId}`;
+      });
     }
 
     if (name === 'recall_chat') {
@@ -133,14 +112,14 @@ export async function runMemoryTool(groupId: number, name: string, rawInput: unk
       if (speakerIds && speakerIds.length > 1) return '这个称呼对应多位群友，请提供完整昵称。';
 
       const days = typeof input.days === 'number' && input.days > 0 ? Math.min(input.days, HISTORY_DAYS) : undefined;
-      const hits = await recallChat(groupId, {
+      const result = await recallChatEvidence(groupId, {
         query, keywords, speakerIds, days, limit: TOOL_LIMIT,
       });
       // 按来源计数，用来判断语义路到底贡献了多少字面路给不了的结果
-      const via = (kind: string) => hits.filter((h) => h.via === kind).length;
-      printLog(`[MemoryTool] recall_chat(${query}${speaker ? `, speaker=${speaker}` : ''}${kwLog}) -> ${hits.length} 条`
+      const via = (kind: string) => result.hits.filter((h) => h.via === kind).length;
+      printLog(`[MemoryTool] recall_chat(${query}${speaker ? `, speaker=${speaker}` : ''}${kwLog}) -> ${result.hits.length} 条，证据状态=${result.status}`
         + `（字面 ${via('literal')} / 语义 ${via('semantic')} / 两路 ${via('both')}）`);
-      return formatChat(hits);
+      return formatEvidence(result, (h) => `${h.date} [${h.nick ?? h.userId}]`);
     }
 
     printLog(`[MemoryTool] 未知的工具 ${name}`);

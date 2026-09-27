@@ -9,6 +9,8 @@ import type { FormattedMessage } from '@/types/message';
 
 // 服务端可能先识图再调用回复模型，单次请求最多等待 100s
 const REPLY_TIMEOUT = 100000;
+// 要比服务端重排的上游超时（40s）长，否则服务端还在等模型时 bot 先放弃
+const RERANK_TIMEOUT = 45000;
 const COMMON_TIMEOUT = 50000;
 
 /** 工具轮也可能先识图并触发模型重试，单请求超时与普通回复保持一致。 */
@@ -31,6 +33,22 @@ export async function getLLMReply(
 ): Promise<string | null> {
   const data = await postReply({ messages: toDTO(formattedMessage), context }, REPLY_TIMEOUT);
   return data?.text ?? null;
+}
+
+export interface RerankCandidate {
+  id: number;
+  text: string;
+  source?: { kind: 'chat' | 'memory'; subject: string; date?: string; context?: string[] };
+  excerpt?: { start: number; totalLength: number };
+}
+export interface RerankScope { asOf: string; subject?: string }
+
+/** 检索证据重排，失败返回 null，由调用方降级 */
+export async function rerankEvidence(query: string, candidates: RerankCandidate[], scope?: RerankScope): Promise<string | null> {
+  const ret = await Axios.post(getServiceUrl('/llm/rerank'), { query, candidates, ...(scope ? { scope } : {}) }, { timeout: RERANK_TIMEOUT })
+    .catch(() => { printError('[LLM rerank] 证据服务不可用'); return null; });
+  return ret?.data?.success === true && Array.isArray(ret.data.decisions)
+    ? JSON.stringify({ decisions: ret.data.decisions }) : null;
 }
 
 export interface ToolDef {

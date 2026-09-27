@@ -136,7 +136,7 @@ function testSegment() {
 
   console.log('\n[自定义词典]');
   check('默认词典缺的词补上后不再被切成单字', [segment('手办'), segment('小雏')], ['手办', '小雏']);
-  check('补进去的词能进检索词，不再被最小长度滤掉', queryTerms('上次说的那个手办'), ['手办', '上次']);
+  check('自定义词保留，泛用时间词不占检索词', queryTerms('上次说的那个手办'), ['手办']);
   check('还没补的词照样被切开', segment('天妇罗'), '天 妇 罗');
   check('指纹稳定', dictSignature(), dictSignature());
 

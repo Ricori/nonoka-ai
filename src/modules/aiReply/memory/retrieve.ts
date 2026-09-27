@@ -7,6 +7,7 @@ import {
 } from './segment';
 import { searchSimilar, syncVectorModel } from './vector';
 import { HISTORY_DAYS, usableMemorySql } from './policy';
+import { hasRecallContent, termCoverage, windowLineScore } from './relevance';
 
 /**
  * 混合检索：字面（FTS5 + BM25）与语义（向量余弦）两路各自召回，再用 RRF 融合。
@@ -27,21 +28,29 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** 一个窗口最多展开几行原文，否则一段长对话就能把候选池灌满 */
 const WINDOW_EXPAND_LIMIT = 3;
+/** 候选模式下前几个窗口的展开行数：答案常在长窗口末尾，只取 3 行会漏 */
+const CANDIDATE_WINDOW_EXPAND = 12;
 
 /**
  * 语义召回的相似度下限。这道闸不能省：余弦只排序不判断有无，
  * 没有下限时哪怕全库都跟问题无关，最不相关的那个也会以 rank 1 进入融合，压掉真正的字面命中。
  *
- * 阈值跟着 embedding 模型走，换模型必须重新量（scripts/semanticAB.ts）。
- * qwen3.7-text-embedding-flash 上 30 条标注 + 8 条负样本实测：0.40 时负样本 40 个名额里混进 22 条无关，
- * 0.55 负样本误召回归零、命中与 0.40 只差 2 条；到 0.60 命中开始明显下滑
+ * 阈值跟着 embedding 模型走，换模型必须重新量（scripts/semanticEval.ts）。
+ * 人物档案用 0.55；聊天窗口混着多个话题、整体相似度被稀释，单独放宽
  */
 export const MIN_SIMILARITY = 0.55;
+export const CHAT_MIN_SIMILARITY = 0.50;
+/** 过不了下限时再放行排名最前的几个弱候选，只决定进不进池子，不代表能回答问题 */
+const CHAT_FALLBACK_SIMILARITY = 0.45;
+const CHAT_FALLBACK_WINDOWS = 5;
+const OWNED_MEMORY_FALLBACK_SIMILARITY = 0.50;
+const OWNED_MEMORY_FALLBACK_LIMIT = 3;
 
 export interface ChatHit {
   id: number;
   /** 'MM-DD' */
   date: string;
+  dateKey: number;
   userId: number;
   nick: string | null;
   /** 仍带 `[昵称]说：` 前缀，注入时直接可用 */
@@ -63,6 +72,8 @@ export interface MemoryHit {
 }
 
 interface CommonOptions {
+  /** 给证据重排用的宽候选池：每窗口多展开几行、不限窗口名额，相关与否交给重排判断 */
+  candidateMode?: boolean;
   query: string;
   limit?: number;
   /** 已经算好的查询向量，传了就省一次 embed 往返 */
@@ -176,7 +187,7 @@ async function embedQuery(db: MemoryDatabase, text: string): Promise<Float32Arra
 }
 
 /** 取查询向量：调用方给了就用，明确关掉语义路就返回 null，否则现算 */
-function resolveQueryVec(db: MemoryDatabase, opts: CommonOptions): Promise<Float32Array | null> | Float32Array | null {
+export function resolveQueryVec(db: MemoryDatabase, opts: CommonOptions): Promise<Float32Array | null> | Float32Array | null {
   if (opts.queryVec) return opts.queryVec;
   return opts.semantic === false ? null : embedQuery(db, opts.query);
 }
@@ -268,25 +279,21 @@ function pickWindowLines(
   groupId: number,
   terms: WeightedTerm[],
   speakerIds?: number[],
+  expandLimit = WINDOW_EXPAND_LIMIT,
 ): number[] {
   const rows = db.prepare(
     `SELECT id, text FROM chat_line WHERE id BETWEEN ? AND ? AND group_id = ? AND user_id != 0
       ${speakerIds?.length ? `AND user_id IN (${placeholders(speakerIds.length)})` : ''} ORDER BY id`,
   ).all(span.line_from, span.line_to, groupId, ...(speakerIds ?? [])) as { id: number, text: string }[];
-  const chars = new Set(terms.map((term) => term.term).join(''));
 
   // 重合度相同的保持对话顺序
   return rows.filter((row) => hasContent(row.text))
     .map((r, i) => {
-      const body = stripSpeakerPrefix(r.text);
-      let hit = 0;
-      // 整词优先，字重合只作弱兜底；昵称和引文前缀不能给正文加分。
-      terms.forEach(({ term, weight }) => { if (body.includes(term)) hit += 10 * weight; });
-      chars.forEach((c) => { if (body.includes(c)) hit += 0.1; });
+      const hit = windowLineScore(r.text, terms);
       return { id: r.id, hit, i };
     })
     .sort((a, b) => b.hit - a.hit || a.i - b.i)
-    .slice(0, WINDOW_EXPAND_LIMIT)
+    .slice(0, expandLimit)
     .map((r) => r.id);
 }
 
@@ -298,42 +305,44 @@ function semanticChatIds(
   since: number,
   minSimilarity: number,
   speakerIds?: number[],
-): number[] {
+  allowFallback = false,
+  candidateMode = false,
+): Map<number, number> {
   const allow = groupWindowIds(db, groupId, since, speakerIds);
-  if (allow.size === 0) return [];
+  if (allow.size === 0) return new Map();
 
-  const windows = searchSimilar(db, 'window', vec, CANDIDATE_LIMIT, allow).filter((w) => w.score >= minSimilarity);
-  if (windows.length === 0) return [];
+  const windows = searchSimilar(db, 'window', vec, CANDIDATE_LIMIT, allow)
+    .filter((w, rank) => w.score >= minSimilarity
+      || (allowFallback && rank < CHAT_FALLBACK_WINDOWS && w.score >= CHAT_FALLBACK_SIMILARITY));
+  if (windows.length === 0) return new Map();
 
   const rows = db.prepare(
     `SELECT id, line_from, line_to FROM chat_window WHERE id IN (${placeholders(windows.length)})`,
   ).all(...windows.map((w) => w.refId)) as { id: number, line_from: number, line_to: number }[];
   const byId = new Map(rows.map((r) => [r.id, r]));
 
-  // 按窗口的相似度名次依次展开，同一窗口内按相关性排，靠前的行拿到更好的名次
-  return windows.flatMap(({ refId }) => {
+  const ids: number[] = [];
+  windows.forEach(({ refId }, rank) => {
     const span = byId.get(refId);
-    return span ? pickWindowLines(db, span, groupId, terms, speakerIds) : [];
+    if (!span) return;
+    ids.push(...pickWindowLines(
+      db,
+      span,
+      groupId,
+      terms,
+      speakerIds,
+      candidateMode && rank < CHAT_FALLBACK_WINDOWS ? CANDIDATE_WINDOW_EXPAND : WINDOW_EXPAND_LIMIT,
+    ));
   });
+  return rrfFuse([{ ids }]);
 }
-
-/** CQ 码转成的占位符，剥掉之后才知道这行到底有没有内容 */
-const PLACEHOLDER_RE = /\[[^\]]*\]/g;
-const PUNCT_RE = /[\s\p{P}\p{S}]/gu;
-
-/**
- * 至少要剩这么多个字才值得占一个注入名额。
- * 2 个字放得太宽——「不赖」「感觉」这种附和照样进结果，白占一条
- */
-const MIN_CONTENT_CHARS = 4;
 
 /**
  * 只发了个表情、图片或问号的行没有注入价值。
  * 窗口展开会把整段对话里这类行一并带出来，不滤掉就是白占名额
  */
 function hasContent(text: string): boolean {
-  const body = stripSpeakerPrefix(text).replace(PLACEHOLDER_RE, '').replace(PUNCT_RE, '');
-  return body.length >= MIN_CONTENT_CHARS;
+  return hasRecallContent(text);
 }
 
 function fetchChatLines(db: MemoryDatabase, ids: number[]) {
@@ -370,16 +379,28 @@ export async function recallChat(
   const since = dateKeySince(Number.isFinite(days) && days > 0 ? Math.min(days, HISTORY_DAYS) : HISTORY_DAYS);
 
   const literal = literalChatLists(db, groupId, query, opts.keywords ?? [], since, speakerIds);
+  const terms = searchTerms(query, opts.keywords);
   const vec = await resolveQueryVec(db, opts);
   const semantic = vec
-    ? semanticChatIds(db, groupId, searchTerms(query, opts.keywords), vec, since, opts.minSimilarity ?? MIN_SIMILARITY, speakerIds)
-    : [];
-  if (literal.length === 0 && semantic.length === 0) return [];
+    ? semanticChatIds(
+      db,
+      groupId,
+      terms,
+      vec,
+      since,
+      opts.minSimilarity ?? CHAT_MIN_SIMILARITY,
+      speakerIds,
+      opts.minSimilarity === undefined,
+      opts.candidateMode === true,
+    )
+    : new Map<number, number>();
+  if (literal.length === 0 && semantic.size === 0) return [];
 
-  const scores = rrfFuse([...literal, { ids: semantic }]);
+  const scores = rrfFuse(literal);
+  semantic.forEach((score, id) => scores.set(id, (scores.get(id) ?? 0) + score));
   const lines = fetchChatLines(db, [...scores.keys()]);
   const literalIds = new Set(literal.flatMap((l) => l.ids));
-  const semanticIds = new Set(semantic);
+  const semanticIds = new Set(semantic.keys());
 
   // 复读在群里很常见，「玩什么」连发三条会占掉三个名额，注入时只留最相关的那条
   const seen = new Set<string>();
@@ -392,14 +413,16 @@ export async function recallChat(
     .flatMap(([id, score]) => {
       const row = lines.get(id);
       if (!row || !hasContent(row.text)) return [];
-      return [{ row, score }];
+      const coverage = termCoverage(row.text, terms);
+      // 覆盖过半才加分，只是排序信号，不硬过滤语义命中
+      return [{ row, score: score * (RRF_K + 1) + (coverage >= 0.5 ? 0.5 * coverage : 0) }];
     })
     .sort((a, b) => b.score - a.score || b.row.id - a.row.id)
     .filter(({ row }) => {
       const body = `${row.user_id}:${stripSpeakerPrefix(row.text)}`;
       if (seen.has(body)) return false;
       const span = windowOf.get(groupId, since, row.id) as { id: number } | undefined;
-      if (span) {
+      if (span && !opts.candidateMode) {
         const used = windowCounts.get(span.id) ?? 0;
         if (used >= WINDOW_EXPAND_LIMIT) return false;
         windowCounts.set(span.id, used + 1);
@@ -411,6 +434,7 @@ export async function recallChat(
     .map(({ row }) => ({
       id: row.id,
       date: formatDate(row.date_key),
+      dateKey: row.date_key,
       userId: row.user_id,
       nick: row.nick,
       text: row.text,
@@ -510,6 +534,7 @@ export async function recallMemory(
   db: MemoryDatabase = getMemoryDb(),
 ): Promise<MemoryHit[]> {
   const { query, aboutUserIds, limit = DEFAULT_LIMIT } = opts;
+  const terms = searchTerms(query, opts.keywords);
 
   const literal = literalMemoryLists(db, query, opts.keywords ?? [], aboutUserIds);
   const vec = await resolveQueryVec(db, opts);
@@ -518,7 +543,10 @@ export async function recallMemory(
   const allow = ownedMemoryIds(db, aboutUserIds);
   const semantic = vec
     ? searchSimilar(db, 'memory', vec, CANDIDATE_LIMIT, allow)
-      .filter((h) => h.score >= (opts.minSimilarity ?? MIN_SIMILARITY)).map((h) => h.refId)
+      .filter((h, rank) => h.score >= (opts.minSimilarity ?? MIN_SIMILARITY)
+        || (opts.minSimilarity === undefined && aboutUserIds?.length
+          && rank < OWNED_MEMORY_FALLBACK_LIMIT && h.score >= OWNED_MEMORY_FALLBACK_SIMILARITY))
+      .map((h) => h.refId)
     : [];
 
   const scores = rrfFuse([...literal, { ids: semantic }]);
@@ -528,7 +556,7 @@ export async function recallMemory(
   const ranked = [...scores.entries()]
     .flatMap(([id, score]) => {
       const hit = found.get(id);
-      return hit ? [{ hit, score }] : [];
+      return hit ? [{ hit, score: score * (RRF_K + 1) + 0.5 * termCoverage(hit.text, terms) }] : [];
     })
     .sort((a, b) => b.score - a.score || b.hit.id - a.hit.id)
     .slice(0, limit)
