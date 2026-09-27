@@ -48,8 +48,10 @@ export interface BotConfig {
     enable: boolean;
     /** 推送配置 {b站uid : 要推送的群号列表 } */
     config: Record<string, number[]>;
-    /** 因近期B站API增加鉴权，需要配置自己账号的cookie */
+    /** 登录账号的完整 cookie，动态接口不对游客开放 */
     cookie: string;
+    /** 登录后 localStorage 里的 ac_time_value，用于 cookie 自动续期，续期后会自动写回 */
+    refreshToken?: string;
   },
   /** 推特动态推送 */
   tweetPush: {

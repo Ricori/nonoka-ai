@@ -117,6 +117,7 @@ const PAGE = `<!doctype html>
     <h2>B 站动态推送</h2>
     <div class="row"><label>启用</label><input type="checkbox" id="biliEnable"></div>
     <div class="row"><label>Cookie</label><textarea id="biliCookie"></textarea></div>
+    <div class="row"><label>refreshToken</label><input type="text" id="biliRefreshToken" placeholder="localStorage 的 ac_time_value，用于自动续期"></div>
     <div class="row"><label style="align-self:flex-start">推送配置</label>
       <div style="flex:1">
         <table id="biliConfigTable"></table>
@@ -230,6 +231,7 @@ const PAGE = `<!doctype html>
 
     document.getElementById('biliEnable').checked = !!bc.biliDynamicPush.enable;
     document.getElementById('biliCookie').value = bc.biliDynamicPush.cookie || '';
+    document.getElementById('biliRefreshToken').value = bc.biliDynamicPush.refreshToken || '';
     buildMapTable(document.getElementById('biliConfigTable'), bc.biliDynamicPush.config);
 
     document.getElementById('tweetEnable').checked = !!bc.tweetPush.enable;
@@ -260,6 +262,7 @@ const PAGE = `<!doctype html>
           enable: document.getElementById('biliEnable').checked,
           config: readMapTable(document.getElementById('biliConfigTable')),
           cookie: document.getElementById('biliCookie').value,
+          refreshToken: document.getElementById('biliRefreshToken').value,
         },
         tweetPush: {
           enable: document.getElementById('tweetEnable').checked,
