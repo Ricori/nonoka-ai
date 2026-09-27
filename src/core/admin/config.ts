@@ -20,7 +20,7 @@ function validateConfig(v: unknown): v is NonokaConfig {
   if (!isPlainObject(botConfig)) return false;
   const requiredKeys = [
     'admin', 'autoAddFriend', 'nonokaService', 'apiKeys', 'repeater',
-    'biliDynamicPush', 'tweetPush', 'ytLivePush', 'aiReply', 'ykhrOneDrive', 'hPic',
+    'biliDynamicPush', 'tweetPush', 'ytLivePush', 'aiReply', 'hPic',
   ];
   return requiredKeys.every((k) => k in botConfig);
 }
@@ -165,11 +165,6 @@ const PAGE = `<!doctype html>
   </section>
 
   <section>
-    <h2>YKHR OneDrive 转存</h2>
-    <div class="row"><label>生效群号</label><input type="text" id="ykhrGroupIds" placeholder="用逗号分隔"></div>
-  </section>
-
-  <section>
     <span class="hint">WebSocket 连接设置（host / port）不通过本面板读取或修改，请直接编辑 config.json</span>
   </section>
 </main>
@@ -250,8 +245,6 @@ const PAGE = `<!doctype html>
     document.getElementById('hPicEnable').checked = !!bc.hPic.enable;
     document.getElementById('hPicWhiteList').value = (bc.hPic.whiteGroupIds || []).join(',');
     document.getElementById('hPicR18').checked = !!bc.hPic.enableR18;
-
-    document.getElementById('ykhrGroupIds').value = ((bc.ykhrOneDrive && bc.ykhrOneDrive.groupIds) || []).join(',');
   }
 
   function collect() {
@@ -285,9 +278,6 @@ const PAGE = `<!doctype html>
           enable: document.getElementById('hPicEnable').checked,
           whiteGroupIds: parseNumList(document.getElementById('hPicWhiteList').value),
           enableR18: document.getElementById('hPicR18').checked,
-        },
-        ykhrOneDrive: {
-          groupIds: parseNumList(document.getElementById('ykhrGroupIds').value),
         },
       },
     };
@@ -368,7 +358,7 @@ export async function handleConfigRoute(
     }
 
     // wsConfig、nonokaService 与 apiKeys 不允许通过管理面板读取或修改，无论提交了什么，都强制沿用磁盘上的现有值；
-    // 先展开 existing.botConfig，保留面板未管理的配置节（ykhrOneDrive 等），避免保存时被丢弃
+    // 先展开 existing.botConfig，保留面板未管理的配置节，避免保存时被丢弃
     const existing = readConfigFile();
     const submittedBotConfig = submitted.botConfig as Partial<BotConfig>;
     const parsed = {

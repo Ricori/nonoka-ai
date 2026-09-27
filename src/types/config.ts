@@ -112,11 +112,6 @@ export interface BotConfig {
       count?: number;
     };
   },
-  /** YKHR OneDrive 文件转存功能 */
-  ykhrOneDrive: {
-    /** 生效的群号 */
-    groupIds: number[];
-  },
   /** 瑟图功能 */
   hPic: {
     /** 是否开启瑟图功能 */
