@@ -1,27 +1,11 @@
 import Axios from 'axios';
-import { printLog } from '@/utils/print';
+import { printError } from '@/utils/print';
 import { getImgCode } from '@/utils/msgCode';
+import { sleep } from '@/utils/function';
+import {
+  UA, getCookie, prepareSession, signWbi,
+} from './session';
 
-interface CardItem {
-  desc: any;
-  card: any;
-  extend_json: any;
-  extra: any;
-  display: any;
-}
-interface RssItem {
-  title: string;
-  author?: string;
-  category?: string | string[];
-  link: string;
-  description: string;
-  guid?: string;
-  pubDate?: number;
-  images?: string[];
-  enclosure_url?: string;
-  enclosure_length?: string;
-  enclosure_type?: string;
-}
 export interface Post {
   title: string;
   link: string;
@@ -31,264 +15,166 @@ export interface Post {
   dylink: string;
 }
 
-export default async function getBiliDynamic(uid: string, myBiliCookie: string) {
-  const result = (await Axios.get('https://api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/space_history', {
-    params: {
-      host_uid: uid,
-    },
-    headers: {
-      cookie: myBiliCookie,
-    },
-  }).catch((err) => {
-    printLog(`[Service Error] GetBiliDynamic API Error: ${err.message}`);
-  }) ?? {}).data;
-
-  if (result && result.data && result.data.cards?.length > 0) {
-    const card = result.data.cards[0] as CardItem;
-    const uname = card.desc?.user_profile?.info?.uname || '';
-    const item = getItem(card);
-
-    let title = '';
-    if (item?.title) {
-      if (item.title.startsWith('【')) {
-        title = item.title;
-      } else {
-        title = `【${item.title}】`;
-      }
-    } else {
-      title = `【${uname} 发新动态啦！】`;
-    }
-
-    const post = {
-      title,
-      link: `https://space.bilibili.com/${uid}/#/dynamic`,
-      description: item?.description || '',
-      images: item?.images ?? [],
-      pubDate: item?.pubDate ?? 0,
-      dylink: item?.link ?? '',
-    } as Post;
-
-    return post;
-  }
-
-  return undefined;
+interface MajorInfo {
+  title: string;
+  text: string;
+  images: string[];
+  url: string;
+  emojiNodes: any[];
 }
 
+const FEATURES = 'itemOpusStyle,listOnlyfans,opusBigCover,onlyfansVote';
 
+/** 空间页前端上报的渲染指纹，缺了更容易触发 -352 */
+const DM_PARAMS = {
+  dm_img_list: '[]',
+  dm_img_str: 'V2ViR0wgMS4wIChPcGVuR0wgRVMgMi4wIENocm9taXVtKQ',
+  dm_cover_img_str: 'QU5HTEUgKEludGVsLCBJbnRlbChSKSBVSEQgR3JhcGhpY3MgNjMwICgweDAwMDAzRTlCKSBEaXJlY3QzRDExIHZzXzVfMCBwc181XzAsIEQzRDExKUdvb2dsZSBJbmMuIChJbnRlbC',
+  dm_img_inter: '{"ds":[],"wh":[0,0,0],"of":[0,0,0]}',
+};
 
-/*
-注意1：以下均以card为根对象
-注意2：直接动态没有origin，转发动态有origin
-注意3：转发动态格式统一为：
-    - user.uname: 用户名
-    - item.content: 正文
-    - item.tips: 原动态结果(例如：源动态已被作者删除、图文资源已失效)
-    - origin: 与原动态一致
-注意4：本总结并不保证完善，而且未来B站可能会修改接口，因此仅供参考
-B站的动态种类繁多，大致可以总结为以下几种：
-desc.type
-转发：type = 1
-- 文字动态 type = 4
-    - user.uname: 用户名
-    - item.content: 正文
-- 图文动态 type = 2
-    - user.name: 用户名
-    - item.title: 标题
-    - item.description: 简介
-    - item.pictures: { img_src: String }[] 图片数组，图片地址在每项的 img_src 中
-- 视频动态 type = 8
-    - aid: av号（以card为根对象没有bv号）
-    - owner.name :用户名
-    - pic: 封面
-    - title: 视频标题
-    - desc: 视频简介
-- 专栏动态 type = 64
-    - author.name: 用户名
-    - image_urls: String[] 封面数组
-    - id: cv号
-    - title: 标题
-    - summary: 简介
-- 音频动态 type = 256
-    - id: auId 音频id
-    - upper: 上传的用户名称
-    - title: 音频标题
-    - author: 音频作者
-    - cover: 音频封面
-- 投票动态
-    - user.uname: 用户名
-    - item.content: 正文
-- 活动专题页 type = 2048
-    - user.uname 用户名
-    - vest.content 正文
-    - sketch.title 活动标题
-    - sketch.desc_text 活动简介
-    - sketch.cover_url 活动封面
-    - sketch.target_url 活动地址
-- 番剧/电视剧/电影等专题页
-    - cover 单集封面
-    - index_title 单集标题
-    - url 视频地址
-    - apiSeasonInfo.title 番剧名称
-    - apiSeasonInfo.cover 番剧封面
-- 直播间动态
-    - roomid 直播间id
-    - uname 用户名
-    - title 直播间标题
-    - cover 直播间封面
-- 付费课程
-    - id 课程编号
-    - cover 封面
-    - title 标题
-    - subtitle 副标题
-    - up_info.name 用户名
-    - up_id 用户Id
-    - update_info 更新状态
-    - url 地址
-*/
+const DESC_LIMIT = 150;
 
+const fullUrl = (url?: string) => (url?.startsWith('//') ? `https:${url}` : url ?? '');
 
-function getItem(item: any) {
-  let card;
-  try {
-    card = JSON.parse(item.card || {});
-  } catch {
-    return;
-  }
-  const itemData = card.item || card;
-  const { origin } = card;
-  // img
-  let images: string[] = [];
-  const getImgs = (data: any) => {
-    const imgs: string[] = [];
-    // 动态图片
-    if (data.pictures) {
-      for (let i = 0; i < data.pictures.length; i++) {
-        imgs.push(data.pictures[i].img_src);
-      }
-    }
-    // 专栏封面
-    if (data.image_urls) {
-      for (let i = 0; i < data.image_urls.length; i++) {
-        imgs.push(data.image_urls[i]);
-      }
-    }
-    // 视频封面
-    if (data.pic) {
-      imgs.push(data.pic);
-    }
-    // 音频/番剧/直播间封面
-    if (data.cover) {
-      imgs.push(data.cover);
-    }
-    // 专题页封面
-    if (data?.sketch?.cover_url) {
-      imgs.push(data.sketch.cover_url);
-    }
-    return imgs;
+async function fetchSpaceFeed(uid: string): Promise<{ items?: any[], reason?: string }> {
+  const query = signWbi({
+    host_mid: uid, platform: 'web', features: FEATURES, ...DM_PARAMS,
+  });
+  const res = await Axios.get(`https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space?${query}`, {
+    headers: {
+      cookie: getCookie(),
+      'User-Agent': UA,
+      Referer: `https://space.bilibili.com/${uid}/dynamic`,
+      Origin: 'https://space.bilibili.com',
+    },
+    timeout: 15000,
+    validateStatus: () => true,
+  });
+  const body = res.data;
+  if (typeof body !== 'object') return { reason: `HTTP ${res.status}` };
+  if (body.code !== 0) return { reason: `code ${body.code} ${body.message}` };
+  // 被风控时也是 code 0，只是列表为空、has_more 为 false，和真没动态分不开，一律当失败
+  if (!body.data?.items?.length) return { reason: '列表为空（疑似风控）' };
+  return { items: body.data.items };
+}
+
+function parseMajor(major: any): MajorInfo {
+  const info: MajorInfo = {
+    title: '', text: '', images: [], url: '', emojiNodes: [],
   };
-
-  images = images.concat(getImgs(itemData));
-
-  if (origin) {
-    images = images.concat(getImgs(origin.item || origin));
-  }
-  // link
-  let link = '';
-  if (itemData.dynamic_id_str) {
-    link = `https://t.bilibili.com/${itemData.dynamic_id_str}`;
-  } else if (item?.desc?.dynamic_id_str) {
-    link = `https://t.bilibili.com/${item.desc.dynamic_id_str}`;
-  }
-  const getTitle = (data: any) => data.title || '';
-  const getDes = (data: any) => {
-    if (!data) {
-      return '';
-    }
-    let des = data.desc || data.description || data.content || data.summary || (data?.vest?.content ? data.vest.content : '') + (data?.sketch ? `\n${data.sketch?.title}\n${data.sketch?.desc_text}` : '') || data.intro || data.update_info || '';
-
-    if (des.length > 150) {
-      des = `${des.substring(0, 150)}...`;
-    }
-    if (item?.display?.emoji_info) {
-      const emoji = item?.display?.emoji_info?.emoji_details;
-      emoji?.forEach((e: any) => {
-        des = des.replace(
-          new RegExp(`\\${e.text}`, 'g'),
-          getImgCode(`${e.url}@48w_48h.png`),
-        );
+  switch (major?.type) {
+    case 'MAJOR_TYPE_ARCHIVE': {
+      const a = major.archive;
+      Object.assign(info, {
+        title: a.title, text: a.desc, images: [a.cover], url: `视频地址：https://www.bilibili.com/video/${a.bvid}`,
       });
+      break;
     }
-
-    return des;
-  };
-  const getOriginDes = (data: any) => {
-    if (!data) {
-      return '';
+    case 'MAJOR_TYPE_OPUS': {
+      const o = major.opus;
+      Object.assign(info, {
+        title: o.title ?? '', text: o.summary?.text, images: (o.pics ?? []).map((p: any) => p.url), emojiNodes: o.summary?.rich_text_nodes ?? [],
+      });
+      break;
     }
-    let text = '';
-    if (data?.apiSeasonInfo?.title) {
-      text += `\n//转发自: ${data.apiSeasonInfo.title}`;
+    case 'MAJOR_TYPE_DRAW':
+      info.images = (major.draw.items ?? []).map((i: any) => i.src);
+      break;
+    case 'MAJOR_TYPE_ARTICLE': {
+      const a = major.article;
+      Object.assign(info, {
+        title: a.title, text: a.desc, images: a.covers ?? [], url: `专栏地址：https://www.bilibili.com/read/cv${a.id}`,
+      });
+      break;
     }
-    if (data?.index_title) {
-      text += `\n${data.index_title}`;
+    case 'MAJOR_TYPE_LIVE_RCMD': {
+      const live = JSON.parse(major.live_rcmd.content).live_play_info;
+      Object.assign(info, {
+        title: live.title, images: [live.cover], url: `直播间地址：https://live.bilibili.com/${live.room_id}`,
+      });
+      break;
     }
-    return text;
-  };
-  const getOriginName = (data: any) => data.uname || data.author?.name || data.upper || data.user?.uname || data.user?.name || data?.owner?.name || data?.up_info?.name || '';
-  const getOriginTitle = (data: any) => {
-    if (!data) {
-      return '';
+    case 'MAJOR_TYPE_NONE':
+      info.text = major.none?.tips ?? '';
+      break;
+    default: {
+      // live / pgc / music / common / courses 等结构都是 title + cover + jump_url
+      const m = major?.[major.type?.replace('MAJOR_TYPE_', '').toLowerCase()];
+      if (m) {
+        Object.assign(info, {
+          title: m.title ?? '', text: m.desc ?? m.sub_title ?? '', images: m.cover ? [m.cover] : [], url: m.jump_url ? `地址：${fullUrl(m.jump_url)}` : '',
+        });
+      }
     }
-    let title = '';
-    if (data?.title) {
-      title += `${data.title}\n`;
-    }
-    if (data?.subtitle) {
-      title += `${data.subtitle}\n`;
-    }
-    return title;
-  };
-  const getUrl = (data: any) => {
-    if (!data) {
-      return '';
-    }
-    // const type: number = item?.desc?.type;
-    if (data.aid) {
-      const bvid = item?.desc?.bvid || item?.desc?.origin?.bvid;
-      return `\n视频地址：https://www.bilibili.com/video/${bvid}`;
-    }
-    if (data.image_urls) {
-      return `\n专栏地址：https://www.bilibili.com/read/cv${data?.id}`;
-    }
-    if (data.upper) {
-      return `\n音频地址：https://www.bilibili.com/audio/au${data?.id}`;
-    }
-    if (data.roomid) {
-      return `\n直播间地址：https://live.bilibili.com/${data?.roomid}`;
-    }
-    if (data.sketch) {
-      return `\n活动地址：${data?.sketch?.target_url}`;
-    }
-    if (data.url) {
-      return `\n地址：${data?.url}`;
-    }
-    return '';
-  };
-
-  const des = getDes(itemData);
-
-  let originDes = '';
-  if (origin && getOriginName(origin)) {
-    originDes = `\n//@${getOriginName(origin)}: ${getOriginTitle(origin.item || origin)}${getDes(origin.item || origin)}`;
-  } else {
-    originDes = getOriginDes(origin);
   }
+  return info;
+}
+
+function parseContent(item: any) {
+  const dyn = item.modules?.module_dynamic ?? {};
+  const major = parseMajor(dyn.major);
+  const emojiNodes = [...(dyn.desc?.rich_text_nodes ?? []), ...major.emojiNodes];
+
+  let text = [dyn.desc?.text, major.text].filter(Boolean).join('\n').trim();
+  if (text.length > DESC_LIMIT) text = `${text.substring(0, DESC_LIMIT)}...`;
+  emojiNodes
+    .filter((n: any) => n.type === 'RICH_TEXT_NODE_TYPE_EMOJI' && n.emoji?.icon_url)
+    .forEach((n: any) => { text = text.split(n.text).join(getImgCode(`${n.emoji.icon_url}@48w_48h.png`)); });
 
   return {
-    title: getTitle(itemData),
-    link,
-    description: `${des}${originDes}${getUrl(itemData)}`,
-    images,
-    pubDate: Number(item.desc.timestamp * 1000),
-  } as RssItem;
+    name: item.modules?.module_author?.name ?? '',
+    major,
+    text,
+  };
+}
+
+function toPost(uid: string, item: any): Post {
+  const self = parseContent(item);
+  let description = self.text;
+  let { images } = self.major;
+
+  if (item.orig) {
+    const orig = parseContent(item.orig);
+    const origTitle = orig.major.title ? `${orig.major.title}\n` : '';
+    description += orig.name ? `\n//@${orig.name}: ${origTitle}${orig.text}` : `\n${orig.text}`;
+    images = images.concat(orig.major.images);
+  }
+  if (self.major.url) description += `\n${self.major.url}`;
+
+  const { title: rawTitle } = self.major;
+  let title = `【${self.name} 发新动态啦！】`;
+  if (rawTitle) title = rawTitle.startsWith('【') ? rawTitle : `【${rawTitle}】`;
+
+  return {
+    title,
+    link: `https://space.bilibili.com/${uid}/dynamic`,
+    description,
+    images: images.filter(Boolean).map(fullUrl),
+    pubDate: (item.modules?.module_author?.pub_ts ?? 0) * 1000,
+    dylink: `https://t.bilibili.com/${item.id_str}`,
+  };
+}
+
+export default async function getBiliDynamic(uid: string): Promise<Post | undefined> {
+  try {
+    await prepareSession();
+    let result = await fetchSpaceFeed(uid);
+    if (!result.items) {
+      await sleep(3000);
+      result = await fetchSpaceFeed(uid);
+    }
+    if (!result.items) {
+      printError(`[Bilibili] 获取 ${uid} 动态失败: ${result.reason}`);
+      return undefined;
+    }
+    // 置顶动态排在第一条，按发布时间取最新的
+    const latest = result.items.reduce((a, b) => (
+      (b.modules?.module_author?.pub_ts ?? 0) > (a.modules?.module_author?.pub_ts ?? 0) ? b : a
+    ));
+    return toPost(uid, latest);
+  } catch (e) {
+    printError(`[Bilibili] 获取 ${uid} 动态出错: ${e.message}`);
+    return undefined;
+  }
 }

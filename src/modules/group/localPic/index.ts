@@ -8,12 +8,13 @@ import {
 } from '@/utils/function';
 import { printError, printLog } from '@/utils/print';
 import {
-  downloadImage, getKeywords, getRandomPicture, PICTURE_DIR, refreshKeywords,
+  deleteSentPicture, downloadImage, getKeywords, getRandomPicture, PICTURE_DIR, recordSentPicture, refreshKeywords,
 } from './functions';
 
 /** match 命中时传递给 run 的数据 */
 type LocalPicHit =
   | { action: 'add' }
+  | { action: 'delete' }
   | { action: 'send'; keyword: string };
 
 class LocalPictureModule extends NonokaModule<GroupMessageData, LocalPicHit> {
@@ -27,6 +28,11 @@ class LocalPictureModule extends NonokaModule<GroupMessageData, LocalPicHit> {
     // 检查是否是 /加图 命令
     if (message.includes('/加图')) {
       return { action: 'add' };
+    }
+
+    // 检查是否是 /删图 命令（需引用图片消息）
+    if (removeCQCodes(message).trim() === '/删图') {
+      return { action: 'delete' };
     }
 
     // 检查消息是否是已注册的关键词
@@ -43,8 +49,10 @@ class LocalPictureModule extends NonokaModule<GroupMessageData, LocalPicHit> {
   async run(ctx: ModuleContext<GroupMessageData>, hit: LocalPicHit) {
     if (hit.action === 'add') {
       await this.handleAddPicture(ctx);
+    } else if (hit.action === 'delete') {
+      await this.handleDeletePicture(ctx);
     } else {
-      this.handleSendPicture(ctx, hit.keyword);
+      await this.handleSendPicture(ctx, hit.keyword);
     }
   }
 
@@ -104,13 +112,47 @@ class LocalPictureModule extends NonokaModule<GroupMessageData, LocalPicHit> {
     }
   }
 
+  /** 处理 /删图 命令：群主/群管理员或 bot 管理员引用图片后删除 */
+  private async handleDeletePicture(ctx: ModuleContext<GroupMessageData>) {
+    const { message, user_id: userId, sender } = ctx.data;
+
+    const isGroupAdmin = sender.role === 'owner' || sender.role === 'admin';
+    const isBotAdmin = (nnkbot.config.admin || []).includes(userId);
+    if (!isGroupAdmin && !isBotAdmin) {
+      ctx.reply('只有管理员可以删图', { at: true });
+      return;
+    }
+
+    if (!hasReply(message)) {
+      ctx.reply('请引用要删除的图片发送 /删图', { at: true });
+      return;
+    }
+
+    let keyword: string | null = null;
+    try {
+      keyword = deleteSentPicture(Number(getReplyMsgId(message)));
+    } catch (e: any) {
+      printError(`[LocalPic] Delete picture error: ${e.message}`);
+    }
+
+    if (keyword) {
+      ctx.reply(`已从「${keyword}」删除图片`);
+      printLog(`[LocalPic] ${userId} 从 ${keyword} 删除了图片`);
+    } else {
+      // 只记录了 bot 最近发出的图，重启后记录清空
+      ctx.reply('找不到这张图，请引用 bot 最近发出的图片', { at: true });
+    }
+  }
+
   /** 处理关键词匹配，发送随机图片 */
-  private handleSendPicture(ctx: ModuleContext<GroupMessageData>, keyword: string) {
+  private async handleSendPicture(ctx: ModuleContext<GroupMessageData>, keyword: string) {
     const picPath = getRandomPicture(keyword);
     if (!picPath) return;
 
     const fileUri = `file:///${picPath.replace(/\\/g, '/')}`;
-    ctx.reply(getImgCode(fileUri));
+    // 记下 message_id，供 /删图 引用时定位本地文件
+    const messageId = await nnkbot.sendGroupMsg(ctx.data.group_id, getImgCode(fileUri));
+    if (messageId) recordSentPicture(messageId, picPath);
   }
 }
 

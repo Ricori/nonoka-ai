@@ -48,8 +48,10 @@ export interface BotConfig {
     enable: boolean;
     /** 推送配置 {b站uid : 要推送的群号列表 } */
     config: Record<string, number[]>;
-    /** 因近期B站API增加鉴权，需要配置自己账号的cookie */
+    /** 登录账号的完整 cookie，动态接口不对游客开放 */
     cookie: string;
+    /** 登录后 localStorage 里的 ac_time_value，用于 cookie 自动续期，续期后会自动写回 */
+    refreshToken?: string;
   },
   /** 推特动态推送 */
   tweetPush: {
@@ -75,14 +77,17 @@ export interface BotConfig {
     initiativeList: number[];
     /** 记忆系统。整块可省略，省略时按代码里的默认值走 */
     memory?: {
-      /**
-       * 每次回复允许模型调几轮召回工具。
-       * 主动插话默认 0：本来就是随口一句，不值得多花一次网络往返
-       */
+      /** 每次回复允许模型调几轮召回工具 */
       toolRounds?: {
         mention?: number;
         initiative?: number;
       };
+      /** 黑名单 QQ，名单内的人不再抽取、更新记忆 */
+      blackUserIds?: number[];
+      /** 攒够多少条「有信息量」的消息触发一次抽取，默认 30 */
+      extractThreshold?: number;
+      /** 同一个人两次抽取之间的最小间隔分钟数，默认 240 */
+      extractCooldownMin?: number;
     };
     /** 画图工具。整块可省略，省略时按代码里的默认值走（默认开启） */
     imageGen?: {
@@ -108,11 +113,6 @@ export interface BotConfig {
       /** 单次返回的结果条数，默认 5，上限 8 */
       count?: number;
     };
-  },
-  /** YKHR OneDrive 文件转存功能 */
-  ykhrOneDrive: {
-    /** 生效的群号 */
-    groupIds: number[];
   },
   /** 瑟图功能 */
   hPic: {

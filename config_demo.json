@@ -33,7 +33,8 @@
         "565597249": [],
         "629994228": []
       },
-      "cookie": ""
+      "cookie": "",
+      "refreshToken": ""
     },
     "tweetPush": {
       "enable": true,
@@ -55,7 +56,12 @@
         "toolRounds": {
           "mention": 1,
           "initiative": 0
-        }
+        },
+        "blackUserIds": [],
+        "extractThreshold": 30,
+        "extractCooldownMin": 240,
+        "topicDailyLimit": 40,
+        "topicLookbackDays": 45
       },
       "imageGen": {
         "enable": false,
@@ -70,9 +76,6 @@
         "dailyLimit": 20,
         "count": 5
       }
-    },
-    "ykhrOneDrive": {
-      "groupIds": []
     },
     "hPic": {
       "enable": false,

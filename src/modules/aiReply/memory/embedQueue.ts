@@ -2,6 +2,7 @@ import { embedTexts } from '@/service/llm';
 import { printError, printLog } from '@/utils/print';
 import { getMemoryDb, type MemoryDatabase } from './db';
 import { saveEmbeddings } from './vector';
+import { usableMemorySql } from './policy';
 
 /**
  * 记忆条目的向量化队列。
@@ -16,8 +17,8 @@ const BATCH_SIZE = 20;
 /** 没攒够也不能一直等，最多拖这么久 */
 const FLUSH_DELAY = 15 * 1000;
 
-/** 服务端单次上限，超了会被 400 */
-const MAX_PER_REQUEST = 200;
+/** 单次别超这个数，积压时整批发大了会撞 503 */
+const MAX_PER_REQUEST = 30;
 
 const pending = new Set<number>();
 let timer: NodeJS.Timeout | null = null;
@@ -53,21 +54,21 @@ async function flushEmbedQueue(db: MemoryDatabase = getMemoryDb()): Promise<numb
   batch.forEach((id) => pending.delete(id));
 
   try {
-    // 期间被软删或淘汰掉的条目不用再算向量
+    // 期间被删掉或淘汰掉的条目不用再算向量
     const rows = db.prepare(
-      `SELECT id, text FROM memory WHERE superseded_by IS NULL AND id IN (${batch.map(() => '?').join(', ')})`,
+      `SELECT id, text FROM memory m WHERE ${usableMemorySql()} AND id IN (${batch.map(() => '?').join(', ')})`,
     ).all(...batch) as { id: number, text: string }[];
     if (rows.length === 0) return 0;
 
-    const vectors = await embedTexts(rows.map((r) => r.text));
-    if (!vectors) {
+    const result = await embedTexts(rows.map((r) => r.text));
+    if (!result) {
       // 整批失败就放回去，下次再试；不能只补一半，调用方是按下标对回条目的
       rows.forEach((r) => pending.add(r.id));
       printError(`[EmbedQueue] ${rows.length} 条向量化失败，已放回队列`);
       return 0;
     }
 
-    const n = saveEmbeddings(db, 'memory', rows.map((r, i) => ({ refId: r.id, vec: vectors[i] })));
+    const n = saveEmbeddings(db, 'memory', rows.map((r, i) => ({ refId: r.id, vec: result.vectors[i], sourceText: r.text })), result.model);
     printLog(`[EmbedQueue] 已向量化 ${n} 条记忆`);
     return n;
   } catch (e) {

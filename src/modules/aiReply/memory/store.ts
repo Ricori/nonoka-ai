@@ -2,19 +2,17 @@ import { printError } from '@/utils/print';
 import { getMemoryDb, type MemoryDatabase } from './db';
 import { segment } from './segment';
 import { deleteEmbeddings } from './vector';
+import { MAX_USER_MEMORIES, usableMemory, usableMemorySql } from './policy';
 
 /**
  * 结构化记忆的存取。
  *
- * 每条记忆是一行，带时间、来源、置信度和被印证次数，能单独更新、过期和软删。
+ * 每条记忆是一行，带时间、来源、置信度和被印证次数，能单独更新、过期和删除。
  * 长期事实（在读研究生）和短期热点（最近在打黑神话）分离。
  */
 
-/** 软删的哨兵值。写真实 id 表示被某条新记忆取代，写 -1 表示直接失效 */
-const DELETED = -1;
-
 /** 档案行里最多列几条印象，避免每轮回复的 prompt 被记忆撑爆 */
-const MAX_INJECT_TRAITS = 6;
+const MAX_INJECT_TRAITS = 4;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -28,10 +26,10 @@ interface MemoryPolicy {
 
 /** 前期用短周期尽快得到反馈；稳定身份数据保留更久，别名不按时间衰减。 */
 const MEMORY_POLICIES: Record<MemoryKind, MemoryPolicy> = {
-  alias: { limit: 8, tauDays: null },
-  relation: { limit: 8, tauDays: 120 },
-  trait: { limit: 12, tauDays: 60 },
-  episode: { limit: 8, tauDays: 14 },
+  alias: { limit: 2, tauDays: null },
+  relation: { limit: 2, tauDays: 120 },
+  trait: { limit: 6, tauDays: 45 },
+  episode: { limit: 4, tauDays: 14 },
 };
 
 const policyFor = (kind: string): MemoryPolicy => MEMORY_POLICIES[kind as MemoryKind] ?? MEMORY_POLICIES.trait;
@@ -47,6 +45,7 @@ export interface MemoryItem {
   hits: number;
   confidence: number;
   pinned: boolean;
+  verified: boolean;
   source: string | null;
 }
 
@@ -85,6 +84,8 @@ export interface ApplyResult {
   added: number[];
   updated: number[];
   deleted: number[];
+  /** 一字未改、只是又被印证一次的条数 */
+  reaffirmed: number;
   /** 被 pinned 保护挡下来的操作条数 */
   blocked: number;
 }
@@ -118,7 +119,21 @@ interface MemoryRow {
   hits: number;
   confidence: number;
   pinned: number;
+  verified: number;
   source: string | null;
+}
+
+/** 物理删除记忆及其全文索引、向量、证据链接；不再被任何记忆引用的证据批次一并删掉 */
+function purgeMemories(db: MemoryDatabase, ids: number[]) {
+  if (ids.length === 0) return;
+  const marks = ids.map(() => '?').join(',');
+  db.transaction(() => {
+    db.prepare(`DELETE FROM memory_evidence WHERE memory_id IN (${marks})`).run(...ids);
+    db.prepare('DELETE FROM memory_evidence_batch WHERE id NOT IN (SELECT batch_id FROM memory_evidence)').run();
+    db.prepare(`DELETE FROM memory_fts WHERE rowid IN (${marks})`).run(...ids);
+    db.prepare(`DELETE FROM memory WHERE id IN (${marks})`).run(...ids);
+  })();
+  deleteEmbeddings(db, 'memory', ids);
 }
 
 function toItem(r: MemoryRow): MemoryItem {
@@ -133,6 +148,7 @@ function toItem(r: MemoryRow): MemoryItem {
     hits: r.hits,
     confidence: r.confidence,
     pinned: r.pinned === 1,
+    verified: r.verified === 1,
     source: r.source,
   };
 }
@@ -226,7 +242,7 @@ class MemoryStore {
     // 按 id 取出 + 稳定排序：同分的条目保持写入顺序，
     // 否则刚迁进来的一批分数完全相同，每次读出来的顺序都不一样，注入的 prompt 也跟着抖
     const rows = db.prepare(
-      "SELECT * FROM memory WHERE scope = 'user' AND owner_id = ? AND superseded_by IS NULL ORDER BY id",
+      "SELECT * FROM memory WHERE scope = 'user' AND owner_id = ? ORDER BY id",
     ).all(userId) as MemoryRow[];
 
     const now = Date.now();
@@ -236,7 +252,7 @@ class MemoryStore {
   /** 这个人有没有可注入的档案内容。认人时用来筛掉「叫得出名字但没有任何记忆」的人 */
   hasMemory(userId: number, db = this.db()): boolean {
     const row = db.prepare(
-      "SELECT 1 FROM memory WHERE scope = 'user' AND owner_id = ? AND superseded_by IS NULL LIMIT 1",
+      `SELECT 1 FROM memory m WHERE scope = 'user' AND owner_id = ? AND ${usableMemorySql()} LIMIT 1`,
     ).get(userId);
     return row !== undefined;
   }
@@ -251,7 +267,7 @@ class MemoryStore {
 
   /** 单条记忆，管理面板改之前要先确认它还在 */
   getMemory(id: number, db = this.db()): MemoryItem | null {
-    const row = db.prepare('SELECT * FROM memory WHERE id = ? AND superseded_by IS NULL').get(id) as MemoryRow | undefined;
+    const row = db.prepare('SELECT * FROM memory WHERE id = ?').get(id) as MemoryRow | undefined;
     return row ? toItem(row) : null;
   }
 
@@ -266,7 +282,7 @@ class MemoryStore {
 
     if (!q) {
       (db.prepare(
-        "SELECT owner_id FROM memory WHERE scope = 'user' AND superseded_by IS NULL"
+        "SELECT owner_id FROM memory WHERE scope = 'user'"
         + ' GROUP BY owner_id ORDER BY count(*) DESC LIMIT ?',
       ).all(limit) as { owner_id: number }[]).forEach((r) => push(r.owner_id));
     } else {
@@ -278,7 +294,7 @@ class MemoryStore {
         .all(like, limit) as { user_id: number }[]).forEach((r) => push(r.user_id));
       (db.prepare(
         "SELECT DISTINCT owner_id FROM memory WHERE scope = 'user' AND kind = 'alias'"
-        + " AND superseded_by IS NULL AND text LIKE ? ESCAPE '\\' LIMIT ?",
+        + " AND text LIKE ? ESCAPE '\\' LIMIT ?",
       ).all(like, limit) as { owner_id: number }[]).forEach((r) => push(r.owner_id));
     }
 
@@ -301,7 +317,7 @@ class MemoryStore {
     const map = new Map<number, string[]>();
     try {
       const rows = db.prepare(
-        "SELECT owner_id, text FROM memory WHERE scope = 'user' AND kind = 'alias' AND superseded_by IS NULL ORDER BY id",
+        `SELECT owner_id, text FROM memory m WHERE scope = 'user' AND kind = 'alias' AND ${usableMemorySql()} ORDER BY id`,
       ).all() as { owner_id: number, text: string }[];
 
       rows.forEach(({ owner_id, text }) => {
@@ -340,7 +356,7 @@ class MemoryStore {
     brief = false,
   ): string | null {
     const nickName = this.getNickName(userId, groupId, db);
-    const items = this.listUserMemories(userId, db);
+    const items = this.listUserMemories(userId, db).filter((item) => usableMemory(item));
     if (!nickName && items.length === 0) return null;
 
     const pick = (kind: string) => items.filter((i) => i.kind === kind).map((i) => i.text);
@@ -372,13 +388,13 @@ class MemoryStore {
 
   private insert(db: MemoryDatabase, m: {
     ownerId: number, groupId: number | null, kind: string, text: string,
-    confidence: number, pinned?: boolean, source?: string | null,
+    confidence: number, pinned?: boolean, source?: string | null, verified?: boolean,
   }): number {
     const now = Date.now();
     const info = db.prepare(`
-      INSERT INTO memory (scope, owner_id, group_id, kind, text, first_seen, last_seen, hits, confidence, pinned, source, updated_at)
-      VALUES ('user', ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
-    `).run(m.ownerId, m.groupId, m.kind, m.text, now, now, m.confidence, m.pinned ? 1 : 0, m.source ?? null, now);
+      INSERT INTO memory (scope, owner_id, group_id, kind, text, first_seen, last_seen, hits, confidence, pinned, source, updated_at, verified)
+      VALUES ('user', ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
+    `).run(m.ownerId, m.groupId, m.kind, m.text, now, now, m.confidence, m.pinned ? 1 : 0, m.source ?? null, now, m.verified ? 1 : 0);
 
     const id = Number(info.lastInsertRowid);
     db.prepare('INSERT INTO memory_fts (rowid, seg) VALUES (?, ?)').run(id, segment(m.text));
@@ -398,6 +414,7 @@ class MemoryStore {
       confidence: m.confidence ?? 0.6,
       pinned: m.pinned,
       source: m.source,
+      verified: true,
     });
   }
 
@@ -405,64 +422,84 @@ class MemoryStore {
    * 应用 LLM 返回的增删改操作。
    *
    * pinned 是人工维护的，UPDATE/DELETE 一律在这里挡掉——不依赖服务端 prompt 自觉。
-   * DELETE 只写 superseded_by 不物理删，判错了还能捞回来
    */
   applyOps(userId: number, groupId: number | null, ops: MemoryOp[], db = this.db()): ApplyResult {
     const result: ApplyResult = {
-      added: [], updated: [], deleted: [], blocked: 0,
+      added: [], updated: [], deleted: [], reaffirmed: 0, blocked: 0,
     };
     if (ops.length === 0) return result;
 
     const now = Date.now();
     const existing = new Map(
-      (db.prepare("SELECT * FROM memory WHERE scope = 'user' AND owner_id = ? AND superseded_by IS NULL").all(userId) as MemoryRow[])
+      (db.prepare("SELECT * FROM memory WHERE scope = 'user' AND owner_id = ?").all(userId) as MemoryRow[])
         .map((r) => [r.id, toItem(r)]),
     );
 
     db.transaction(() => {
       ops.forEach((op) => {
+        if (!['ADD', 'UPDATE', 'DELETE'].includes(op.op)) return;
         const target = op.id === undefined ? undefined : existing.get(op.id);
         // 认不出 id 的 UPDATE/DELETE 直接丢：可能指向别人的条目，或者已经被删过
         if (op.op !== 'ADD' && !target) return;
-        if (target?.pinned) {
+        // 身份/关系只能人工确认。保护已有身份条目，也禁止把普通事实改成身份条目。
+        if (target?.pinned || target?.verified || ['alias', 'relation'].includes(target?.kind ?? '')
+          || ['alias', 'relation'].includes(op.kind ?? '')) {
           result.blocked += 1;
           return;
         }
 
         if (op.op === 'DELETE') {
-          db.prepare('UPDATE memory SET superseded_by = ?, updated_at = ? WHERE id = ?').run(DELETED, now, op.id);
-          db.prepare('DELETE FROM memory_fts WHERE rowid = ?').run(op.id);
+          purgeMemories(db, [op.id!]);
+          existing.delete(op.id!);
           result.deleted.push(op.id!);
           return;
         }
 
         if (!op.text) return;
+        // 模型把身份/关系标错成 trait 时也不能绕过人工确认。
+        if (/(?:昵称|别名|网名|本名|小名|绰号)|^(?:叫|名叫|名字|又叫)|的(?:朋友|同学|同桌|同事|老婆|老公|女友|男友)/.test(op.text)) {
+          result.blocked += 1;
+          return;
+        }
+        if (!['trait', 'episode'].includes(op.kind ?? target?.kind ?? 'trait')) return;
+        if (op.text.length > 160 || !Number.isFinite(op.confidence ?? 0.6)
+          || (op.confidence ?? 0.6) < 0 || (op.confidence ?? 0.6) > 1) return;
 
         if (op.op === 'UPDATE') {
+          if (op.text === target!.text && (op.kind ?? target!.kind) === target!.kind) {
+            db.prepare('UPDATE memory SET last_seen = ?, hits = hits + 1 WHERE id = ?').run(now, op.id);
+            result.reaffirmed += 1;
+            return;
+          }
           // first_seen 保留：这件事是什么时候第一次知道的，比它最近一次被印证更有价值
           db.prepare(
             'UPDATE memory SET kind = ?, text = ?, confidence = ?, last_seen = ?, hits = hits + 1, updated_at = ? WHERE id = ?',
           ).run(op.kind ?? target!.kind, op.text, op.confidence ?? target!.confidence, now, now, op.id);
           db.prepare('UPDATE memory_fts SET seg = ? WHERE rowid = ?').run(segment(op.text), op.id);
+          deleteEmbeddings(db, 'memory', [op.id!]);
           result.updated.push(op.id!);
+          existing.set(op.id!, this.getMemory(op.id!, db)!);
           return;
         }
 
-        // 同一句话又说了一遍不该多出一条，算作又被印证一次
+        // 同一句话又说了一遍不该多出一条，算作又被印证一次。
+        // 不进 updated：文本一个字没变，向量还是原来那条，重算纯属白花钱
         const same = [...existing.values()].find((i) => i.text === op.text && i.kind === (op.kind ?? 'trait'));
         if (same) {
           db.prepare('UPDATE memory SET hits = hits + 1, last_seen = ?, updated_at = ? WHERE id = ?').run(now, now, same.id);
-          result.updated.push(same.id);
+          result.reaffirmed += 1;
           return;
         }
 
-        result.added.push(this.insert(db, {
+        const addedId = this.insert(db, {
           ownerId: userId,
           groupId,
           kind: op.kind ?? 'trait',
           text: op.text,
           confidence: op.confidence ?? 0.6,
-        }));
+        });
+        result.added.push(addedId);
+        existing.set(addedId, this.getMemory(addedId, db)!);
       });
     })();
 
@@ -481,7 +518,7 @@ class MemoryStore {
 
     const placeholders = ids.map(() => '?').join(',');
     const alive = (db.prepare(
-      `SELECT id FROM memory WHERE owner_id = ? AND superseded_by IS NULL AND id IN (${placeholders})`,
+      `SELECT id FROM memory WHERE owner_id = ? AND id IN (${placeholders})`,
     ).all(userId, ...ids) as { id: number }[]).map((r) => r.id);
     if (alive.length === 0) return null;
 
@@ -547,16 +584,16 @@ class MemoryStore {
     const text = patch.text ?? current.text;
     const confidence = patch.confidence ?? current.confidence;
     const pinned = patch.pinned ?? current.pinned;
-    const textChanged = text !== current.text;
+    const textChanged = text !== current.text || !usableMemory(current);
 
     db.transaction(() => {
       // last_seen 不动：人工改字面不代表这件事又被印证了一次
       db.prepare(
-        'UPDATE memory SET kind = ?, text = ?, confidence = ?, pinned = ?, updated_at = ? WHERE id = ?',
+        'UPDATE memory SET kind = ?, text = ?, confidence = ?, pinned = ?, updated_at = ?, verified = 1 WHERE id = ?',
       ).run(kind, text, confidence, pinned ? 1 : 0, Date.now(), id);
 
       if (textChanged) {
-        db.prepare('UPDATE memory_fts SET seg = ? WHERE rowid = ?').run(segment(text), id);
+        db.prepare('INSERT OR REPLACE INTO memory_fts (rowid, seg) VALUES (?, ?)').run(id, segment(text));
         // 旧向量对应的是旧文本，留着会把这条召回到错的语境上
         deleteEmbeddings(db, 'memory', [id]);
       }
@@ -565,43 +602,35 @@ class MemoryStore {
     return { ok: true, textChanged };
   }
 
-  /** 人工删一条。同样只软删，判错了改回 superseded_by 就能捞回来 */
+  /** 人工删一条 */
   removeMemory(id: number, db = this.db()): boolean {
     if (!this.getMemory(id, db)) return false;
-
-    db.transaction(() => {
-      db.prepare('UPDATE memory SET superseded_by = ?, updated_at = ? WHERE id = ?').run(DELETED, Date.now(), id);
-      db.prepare('DELETE FROM memory_fts WHERE rowid = ?').run(id);
-    })();
-
-    deleteEmbeddings(db, 'memory', [id]);
+    purgeMemories(db, [id]);
     return true;
   }
 
   /**
-   * 超出上限的非 pinned 记忆按分数从低到高软删，返回被淘汰的 id。
+   * 超出上限的非 pinned 记忆按分数从低到高删除，返回被淘汰的 id。
    * 不再像旧实现那样硬截断前 6 条——那样长期事实会被短期热点挤掉，挤掉就再也回不来
    */
   evict(userId: number, db = this.db()): number[] {
-    const items = this.listUserMemories(userId, db).filter((i) => !i.pinned);
+    const all = this.listUserMemories(userId, db);
+    const items = all.filter((i) => !i.pinned);
     const byKind = new Map<string, MemoryItem[]>();
     items.forEach((item) => byKind.set(item.kind, [...(byKind.get(item.kind) ?? []), item]));
-    const doomed = [...byKind.entries()].flatMap(([kind, candidates]) => (
-      candidates.slice(policyFor(kind).limit).map((candidate) => candidate.id)
-    ));
+    const kept = new Set<number>();
+    byKind.forEach((candidates, kind) => {
+      candidates.filter((item) => usableMemory(item)).slice(0, policyFor(kind).limit).forEach((item) => kept.add(item.id));
+    });
+    const totalBudget = MAX_USER_MEMORIES;
+    const retained = new Set(items.filter((i) => kept.has(i.id)).slice(0, totalBudget).map((i) => i.id));
+    // 未确认身份单独隔离，保留在管理页供确认；其余过期/超额条目删除。
+    const doomed = items.filter((i) => {
+      const quarantined = (i.kind === 'alias' || i.kind === 'relation') && !i.verified;
+      return !quarantined && !retained.has(i.id);
+    }).map((i) => i.id);
     if (doomed.length === 0) return [];
-    const now = Date.now();
-
-    db.transaction(() => {
-      const supersede = db.prepare('UPDATE memory SET superseded_by = ?, updated_at = ? WHERE id = ?');
-      const unindex = db.prepare('DELETE FROM memory_fts WHERE rowid = ?');
-      doomed.forEach((id) => {
-        supersede.run(DELETED, now, id);
-        unindex.run(id);
-      });
-    })();
-
-    deleteEmbeddings(db, 'memory', doomed);
+    purgeMemories(db, doomed);
     return doomed;
   }
 }

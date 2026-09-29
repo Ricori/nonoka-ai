@@ -2,7 +2,7 @@ import fs from 'fs';
 import http from 'http';
 import path from 'path';
 import { printLog } from '@/utils/print';
-import { NonokaConfig } from '@/types/config';
+import { BotConfig, NonokaConfig } from '@/types/config';
 import { NonokaCore } from '../nnkCore';
 import { readBody } from './http';
 
@@ -20,7 +20,7 @@ function validateConfig(v: unknown): v is NonokaConfig {
   if (!isPlainObject(botConfig)) return false;
   const requiredKeys = [
     'admin', 'autoAddFriend', 'nonokaService', 'apiKeys', 'repeater',
-    'biliDynamicPush', 'tweetPush', 'ytLivePush', 'aiReply', 'ykhrOneDrive', 'hPic',
+    'biliDynamicPush', 'tweetPush', 'ytLivePush', 'aiReply', 'hPic',
   ];
   return requiredKeys.every((k) => k in botConfig);
 }
@@ -117,6 +117,7 @@ const PAGE = `<!doctype html>
     <h2>B 站动态推送</h2>
     <div class="row"><label>启用</label><input type="checkbox" id="biliEnable"></div>
     <div class="row"><label>Cookie</label><textarea id="biliCookie"></textarea></div>
+    <div class="row"><label>refreshToken</label><input type="text" id="biliRefreshToken" placeholder="localStorage 的 ac_time_value，用于自动续期"></div>
     <div class="row"><label style="align-self:flex-start">推送配置</label>
       <div style="flex:1">
         <table id="biliConfigTable"></table>
@@ -162,11 +163,6 @@ const PAGE = `<!doctype html>
     <div class="row"><label>启用</label><input type="checkbox" id="hPicEnable"></div>
     <div class="row"><label>白名单群号</label><input type="text" id="hPicWhiteList" placeholder="用逗号分隔，留空则不限制"></div>
     <div class="row"><label>允许 R18</label><input type="checkbox" id="hPicR18"></div>
-  </section>
-
-  <section>
-    <h2>YKHR OneDrive 转存</h2>
-    <div class="row"><label>生效群号</label><input type="text" id="ykhrGroupIds" placeholder="用逗号分隔"></div>
   </section>
 
   <section>
@@ -235,6 +231,7 @@ const PAGE = `<!doctype html>
 
     document.getElementById('biliEnable').checked = !!bc.biliDynamicPush.enable;
     document.getElementById('biliCookie').value = bc.biliDynamicPush.cookie || '';
+    document.getElementById('biliRefreshToken').value = bc.biliDynamicPush.refreshToken || '';
     buildMapTable(document.getElementById('biliConfigTable'), bc.biliDynamicPush.config);
 
     document.getElementById('tweetEnable').checked = !!bc.tweetPush.enable;
@@ -250,8 +247,6 @@ const PAGE = `<!doctype html>
     document.getElementById('hPicEnable').checked = !!bc.hPic.enable;
     document.getElementById('hPicWhiteList').value = (bc.hPic.whiteGroupIds || []).join(',');
     document.getElementById('hPicR18').checked = !!bc.hPic.enableR18;
-
-    document.getElementById('ykhrGroupIds').value = ((bc.ykhrOneDrive && bc.ykhrOneDrive.groupIds) || []).join(',');
   }
 
   function collect() {
@@ -267,6 +262,7 @@ const PAGE = `<!doctype html>
           enable: document.getElementById('biliEnable').checked,
           config: readMapTable(document.getElementById('biliConfigTable')),
           cookie: document.getElementById('biliCookie').value,
+          refreshToken: document.getElementById('biliRefreshToken').value,
         },
         tweetPush: {
           enable: document.getElementById('tweetEnable').checked,
@@ -285,9 +281,6 @@ const PAGE = `<!doctype html>
           enable: document.getElementById('hPicEnable').checked,
           whiteGroupIds: parseNumList(document.getElementById('hPicWhiteList').value),
           enableR18: document.getElementById('hPicR18').checked,
-        },
-        ykhrOneDrive: {
-          groupIds: parseNumList(document.getElementById('ykhrGroupIds').value),
         },
       },
     };
@@ -368,14 +361,18 @@ export async function handleConfigRoute(
     }
 
     // wsConfig、nonokaService 与 apiKeys 不允许通过管理面板读取或修改，无论提交了什么，都强制沿用磁盘上的现有值；
-    // 先展开 existing.botConfig，保留面板未管理的配置节（ykhrOneDrive 等），避免保存时被丢弃
+    // 先展开 existing.botConfig，保留面板未管理的配置节，避免保存时被丢弃
     const existing = readConfigFile();
+    const submittedBotConfig = submitted.botConfig as Partial<BotConfig>;
     const parsed = {
       ...submitted,
       wsConfig: existing.wsConfig,
       botConfig: {
         ...existing.botConfig,
-        ...submitted.botConfig,
+        ...submittedBotConfig,
+        // aiReply 还得再合一层：面板只管 enable/黑名单/主动列表，
+        // 直接覆盖会把只在 config.json 里配的 memory、imageGen、search 整块抹掉
+        aiReply: { ...existing.botConfig.aiReply, ...submittedBotConfig.aiReply },
         nonokaService: existing.botConfig.nonokaService,
         apiKeys: existing.botConfig.apiKeys,
       },

@@ -31,7 +31,7 @@ export abstract class NonokaCore {
   abstract sendPrivateMsg(userId: number, msg: string, plainText?: boolean): Promise<void>;
 
   /** Send a group message (implemented by the NonokaBot)  */
-  abstract sendGroupMsg(groupId: number, msg: string, atUser?: number | string, plainText?: boolean): Promise<void>;
+  abstract sendGroupMsg(groupId: number, msg: string, atUser?: number | string, plainText?: boolean): Promise<number | undefined>;
 
   constructor() {
     this.debugMode = debugMode;

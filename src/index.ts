@@ -10,7 +10,6 @@ import RequestFriendModule from '@/modules/request/requestFriend';
 import AdminModule from '@/modules/admin';
 import ImageSearchModule from '@/modules/common/imageSearch';
 import HPicModule from '@/modules/common/hPic';
-import YkhrOnedriveModule from '@/modules/group/ykhr';
 import PrivateAIReplyModule from '@/modules/aiReply/private';
 import GroupAIReplyModule from '@/modules/aiReply/group';
 import RepeaterModule from '@/modules/group/repeater';
@@ -30,8 +29,6 @@ nnkbot.loadModules([
   ImageSearchModule,
   // 图库 (group)
   LocalPictureModule,
-  // YKHR (group:plain)
-  // YkhrOnedriveModule,
   // 涩图 (private | group)
   HPicModule,
   // 复读机 (group:plain)

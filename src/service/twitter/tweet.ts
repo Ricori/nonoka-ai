@@ -31,39 +31,53 @@ export interface LatestTweetInfo {
   time: number;
 }
 
-export interface CachedTweetsResult {
-  /** 服务端最近一轮落库的最新推文 */
+export interface LatestTweetsResult {
+  /** 最新推文 */
   tweets: LatestTweetInfo[];
-  /** 距服务端下一轮数据落库还有多少秒，用于对齐下次取数时间 */
+  /** 服务端本次抓取是否失败。失败时 tweets 必为空，调用方应计入连续失败 */
+  failed: boolean;
+  /** 服务端抓取失败、退回了旧数据兜底。数据仍可用，只是不新鲜 */
+  stale: boolean;
+  /** 服务端建议隔多久再来取（秒）。常态 240，深夜 480，故障时退避 */
   nextReadyInS: number;
-  /** 本轮数据的落库时刻（服务端 epoch 秒） */
-  updatedAt: number | null;
 }
 
-// 服务端未给出就绪时间时的兜底间隔
+// 服务端没给出建议间隔时的兜底
 const DEFAULT_NEXT_READY_S = 240;
 
 /**
- * 读取服务端定时任务落库的最新推文。
+ * 取这批用户的最新推文。
+ *
+ * 服务端是请求触发的实时抓取，拿到的就是此刻的数据。取数节奏由服务端通过
+ * next_ready_in_s 下发，这边只管跟随，不必自己判断时段或退避。
  */
-export async function getCachedLatestTweets(usernames: string[]): Promise<CachedTweetsResult | null> {
+export async function getLatestTweets(usernames: string[]): Promise<LatestTweetsResult | null> {
   const { baseUrl, apiKey } = botConfig.nonokaService;
-  const nnkURL = `${baseUrl}/tweets/cached?apikey=${apiKey}`;
+  const nnkURL = `${baseUrl}/tweets/latest?apikey=${apiKey}`;
 
   try {
-    const { data } = await Axios.post(nnkURL, { usernames }, { timeout: 15000 });
+    // 服务端把抓取放在请求路径里，超时要留足它的抓取预算，不能按只读缓存给
+    const { data } = await Axios.post(nnkURL, { usernames }, { timeout: 30000 });
     if (!data?.success) return null;
 
-    const userList = (data.users ?? []) as { username: string, latest?: string | null, error?: string }[];
+    const nextReadyInS = typeof data.next_ready_in_s === 'number' ? data.next_ready_in_s : DEFAULT_NEXT_READY_S;
+
+    // 服务端抓取失败也是 200，靠 status 区分：这样它建议的退避间隔仍能带回来
+    if (data.status !== 'success') {
+      printError(`[NonokaService] getLatestTweets: upstream failed. ${data.error ?? ''}`);
+      return {
+        tweets: [], failed: true, stale: false, nextReadyInS,
+      };
+    }
+    if (data.stale) {
+      printError('[NonokaService] getLatestTweets: 上游降级返回旧数据（stale）。');
+    }
+
+    const userList = (data.users ?? []) as { username: string, latest?: string | null }[];
+    // latest 为空表示该账号没出现在本次列表流里。盯的账号可以安静好几天，这是常态而非故障，静默跳过即可
     const tweets = userList.map((user) => {
       const tweetId = getTweetId(user.latest);
-      if (!tweetId) {
-        // 该用户本轮抓取失败，定时任务下一轮会重试，跳过即可
-        if (data.updated_at) {
-          printError(`[NonokaService] getCachedLatestTweets: ${user.username} unavailable. ${user.error ?? ''}`);
-        }
-        return null;
-      }
+      if (!tweetId) return null;
       return {
         username: user.username,
         tweetId,
@@ -72,12 +86,10 @@ export async function getCachedLatestTweets(usernames: string[]): Promise<Cached
     }).filter((item): item is LatestTweetInfo => item !== null);
 
     return {
-      tweets,
-      nextReadyInS: typeof data.next_ready_in_s === 'number' ? data.next_ready_in_s : DEFAULT_NEXT_READY_S,
-      updatedAt: data.updated_at ?? null,
+      tweets, failed: false, stale: Boolean(data.stale), nextReadyInS,
     };
   } catch (e) {
-    printError(`[NonokaService] getCachedLatestTweets API Error: ${e.message}`);
+    printError(`[NonokaService] getLatestTweets API Error: ${e.message}`);
   }
   return null;
 }

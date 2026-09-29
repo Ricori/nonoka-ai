@@ -56,16 +56,17 @@ line(`群 ${groupId}｜问题「${query}」｜days=${days}`);
 const stat = db.prepare(
   'SELECT count(*) AS n, min(date_key) AS a, max(date_key) AS b FROM chat_line WHERE group_id = ?',
 ).get(groupId) as { n: number, a: number, b: number };
-const topics = db.prepare('SELECT count(*) AS n FROM topic WHERE group_id = ?').get(groupId) as { n: number };
+const windows = db.prepare(`SELECT count(*) AS n FROM chat_window w
+  JOIN embedding e ON e.ref_kind = 'window' AND e.ref_id = w.id WHERE w.group_id = ?`).get(groupId) as { n: number };
 const memories = db.prepare(
-  'SELECT count(*) AS n FROM memory WHERE superseded_by IS NULL AND (group_id = ? OR group_id IS NULL)',
+  'SELECT count(*) AS n FROM memory WHERE group_id = ? OR group_id IS NULL',
 ).get(groupId) as { n: number };
 
 line('\n[数据]');
-line(`  聊天 ${stat.n} 行${stat.n ? `（${stat.a} ~ ${stat.b}）` : ''}｜话题 ${topics.n} 个｜记忆 ${memories.n} 条`);
-if (topics.n === 0) line('  ⚠ 没有话题向量，语义召回这条路不存在，只剩字面检索');
+line(`  聊天 ${stat.n} 行${stat.n ? `（${stat.a} ~ ${stat.b}）` : ''}｜已向量化窗口 ${windows.n} 个｜记忆 ${memories.n} 条`);
+if (windows.n === 0) line('  ⚠ 没有窗口向量，语义召回这条路不存在，只剩字面检索');
 if (!botConfig.aiReply.initiativeList.includes(groupId)) {
-  line('  ⚠ 不在 initiativeList 里，巩固任务默认不给这个群切话题');
+  line('  ⚠ 不在 initiativeList 里，巩固任务默认不给这个群切语义窗口');
 }
 
 // 2. 名字解析。线上「名字未解析」时检索根本没跑，这一层是最容易踩的坑
@@ -109,8 +110,8 @@ show(both);
 const onlySemantic = both.filter((h) => !literal.some((l) => l.id === h.id));
 if (onlySemantic.length > 0) {
   line(`  ↑ 其中 ${onlySemantic.length} 条只有语义能召回（字面一个字都没重合）`);
-} else if (topics.n > 0) {
-  line('  ↑ 语义没有额外贡献，可能是相似度没过 0.40 的下限');
+} else if (windows.n > 0) {
+  line('  ↑ 语义没有额外贡献，可能是相似度没过下限');
 }
 
 // 5. 记忆召回

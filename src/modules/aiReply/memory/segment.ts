@@ -10,12 +10,38 @@ const PREFIX_RE = /^\[[^\]]*\](?:回复了[\s\S]*?的消息\([\s\S]*?\)，说：
 /** 引文过长会被截断，导致整条前缀正则匹配不上，只好退回剥掉开头的 `[昵称]` */
 const NICK_RE = /^\[[^\]]*\]/;
 
+/** 回复型前缀，拆出被回复的人和引文 */
+const REPLY_RE = /^\[[^\]]*\]回复了([\s\S]*?)的消息\(([\s\S]*?)\)，说：/;
+
 /** 去掉 `[昵称]说：` 这类前缀只留正文。认人时也要用：
  *  不剥的话说话人自己的昵称永远命中自己，白占一个注入名额 */
 export function stripSpeakerPrefix(message: string): string {
   const body = message.replace(PREFIX_RE, '');
   // 正则整条命中时开头已经不是 [ 了；没命中说明是被截断的引文，至少把昵称摘掉
   return body === message ? body.replace(NICK_RE, '') : body;
+}
+
+export interface SpeakerParts {
+  /** 被回复的人，非回复型消息是空串 */
+  replyTo: string;
+  /** 引文原文，非回复型消息是空串 */
+  quote: string;
+  /** 这个人自己说的那句话 */
+  body: string;
+}
+
+/**
+ * 把 `[昵称]回复了X的消息(引文)，说：正文` 拆成三段，非回复型消息只有正文。
+ *
+ * 抽取记忆时要分开算：引文是别人的话，不能拿它的字数把「？？」这种回复放行，
+ * 但整段扔掉又会让「刚通关」这类回复读不懂，只能留一小截当上下文
+ */
+export function splitSpeakerPrefix(message: string): SpeakerParts {
+  const reply = message.match(REPLY_RE);
+  if (reply) {
+    return { replyTo: reply[1].trim(), quote: reply[2].trim(), body: message.slice(reply[0].length) };
+  }
+  return { replyTo: '', quote: '', body: stripSpeakerPrefix(message) };
 }
 
 /** 词典有几 MB，第一次真正分词时才加载 */
@@ -77,6 +103,7 @@ const USELESS_WORDS = new Set([
   '记得', '知道', '觉得', '感觉', '时候', '这样', '那样', '现在', '今天', '明天', '昨天',
   '一样', '真的', '其实', '而且', '虽然', '如果', '为什', '怎样',
   '是不是', '有没有', '什么', '为什么', '怎么', '怎么办', '可以', '这个', '那个', '东西', '事情',
+  '上次', '最近', '哪里', '一个', '多少', '什么时候',
 ]);
 
 const BOT_ALIASES = new Set(BOT_NAME_ALIASES.map((a) => a.toLowerCase()));

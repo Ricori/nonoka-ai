@@ -2,7 +2,7 @@ import { SimpleIntervalJob, AsyncTask } from 'toad-scheduler';
 import nnkbot from '@/core/nnkBot';
 import nnkStorage from '@/core/nnkStorage';
 import { printError } from '@/utils/print';
-import { getCachedLatestTweets } from '@/service/twitter/tweet';
+import { getLatestTweets } from '@/service/twitter/tweet';
 import { createMsgFromTweetId } from '@/service/twitter/message';
 import nnkSchedule, { NonokaJob } from '@/core/nnkSchedule';
 
@@ -48,13 +48,13 @@ async function pushLatestTweetForUser(username: string, groupIds: number[], late
 async function checkLatestTweet() {
   const groupConfig = nnkbot.config.tweetPush.config;
   const twitterUsernames = Object.keys(groupConfig);
-  const result = await getCachedLatestTweets(twitterUsernames);
+  const result = await getLatestTweets(twitterUsernames);
 
   // 无论成败都先排下一次，避免中途异常导致任务停摆
   scheduleNext(result?.nextReadyInS);
 
-  // updatedAt 为空说明服务端还没跑完第一轮，不算失败
-  if (!result || (result.tweets.length === 0 && result.updatedAt)) {
+  // 成功但一条都没有是正常的，只有服务端明说抓取失败才算失败
+  if (!result || result.failed) {
     consecutiveFailCount++;
     if (consecutiveFailCount === 10) {
       // 连续错误10次，停止任务
@@ -68,7 +68,6 @@ async function checkLatestTweet() {
     }
     return;
   }
-  if (!result.updatedAt) return;
   consecutiveFailCount = 0;
 
   for (const u of twitterUsernames) {
@@ -86,27 +85,20 @@ async function checkLatestTweet() {
 }
 
 
-// 落库完成后再等这么久才取，留出落库写入与网络的余量，防止读到上一轮的旧数据
-const ALIGN_DELAY = 10 * 1000;
-// 取数失败时的重试间隔（毫秒）：不必等满一轮
+// 请求本身就抛了（网络不通、服务端 5xx）时的重试间隔（毫秒）
 const RETRY_INTERVAL = 60 * 1000;
 // 轮询节拍（秒）：只做时间判断，真正取数由 nextRunAt 控制
 const TICK_SECONDS = 10;
-// 下次允许取数的时间戳；0 表示尚未对齐，启动后首个节拍立即取一次完成对齐
+// 下次允许取数的时间戳；0 表示启动后首个节拍立即取一次
 let nextRunAt = 0;
 
 /**
- * 按服务端上报的落库节奏排下一次取数。
- *
- * 节奏完全跟随服务端（含其深夜降频），这边不再自行判断时段
- * nextReadyInS 缺省表示本次请求失败，退化成固定间隔重试，下次成功时自动重新对齐。
+ * 按服务端建议的节奏排下一次取数。
+ * 节奏完全跟随服务端（含其深夜降频与故障退避），这边不自行判断时段；
+ * nextReadyInS 缺省表示连响应都没拿到，退化成固定间隔重试，下次成功时自动重新跟上。
  */
 function scheduleNext(nextReadyInS?: number) {
-  if (nextReadyInS === undefined) {
-    nextRunAt = Date.now() + RETRY_INTERVAL;
-    return;
-  }
-  nextRunAt = Date.now() + nextReadyInS * 1000 + ALIGN_DELAY;
+  nextRunAt = Date.now() + (nextReadyInS === undefined ? RETRY_INTERVAL : nextReadyInS * 1000);
 }
 
 const task = new AsyncTask('twitterTask', async () => {

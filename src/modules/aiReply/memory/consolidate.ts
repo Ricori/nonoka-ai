@@ -1,108 +1,44 @@
-import {
-  embedTexts, segmentTopics, TOPIC_REJECTED, type TopicLine, type TopicSegment,
-} from '@/service/llm';
+import { embedTexts } from '@/service/llm';
 import { printError, printLog } from '@/utils/print';
-import { backupDateKey } from '../storage/message';
-import {
-  delMeta, getMemoryDb, getMeta, setMeta, type MemoryDatabase,
-} from './db';
+import { sleep } from '@/utils/function';
+import { getMemoryDb, type MemoryDatabase } from './db';
 import { ingestChatBackups } from './ingest';
-import { stripSpeakerPrefix } from './segment';
 import memoryStore from './store';
 import { saveEmbeddings, type RefKind } from './vector';
+import { buildWindows } from './window';
+import { historySince, usableMemorySql } from './policy';
+import { maintainMemory } from './maintenance';
 
 /**
- * 每日巩固：把昨天以前的日志切成话题并向量化，补齐漏掉的向量，再跑一遍淘汰。
- *
- * 向量化的是话题而不是每条消息——话题数量是 O(千)，消息是 O(百万)。
- * 话题的一句话概括本身就是语义检索的载体，比单条「好困」有意义得多
+ * 定时巩固：导入新日志、切语义窗口、补齐缺失的向量，再跑一遍淘汰。
  */
 
-/** 服务端单次切话题的行数上限 */
-const TOPIC_CHUNK = 100;
+/** 向量化的批大小，批太大会 exceeded CPU */
+const EMBED_BATCH = 20;
 
-/** 每轮最多处理几天。首次跑有几十天积压，分批消化，别一次把额度打满 */
-const MAX_DAYS_PER_RUN = 3;
+/** 批间留点空 */
+const EMBED_INTERVAL = 300;
 
-/** 每轮最多调几次 /llm/topic，给成本封顶 */
-const MAX_CHUNKS_PER_RUN = 40;
+/** 连续失败这么多批就说明服务在拒，停掉本轮等下次 */
+const MAX_CONSECUTIVE_FAILS = 3;
 
-/**
- * 同时发几个切话题请求。实测单次要 40~80s，串行跑完一天两三千行要半小时以上，
- * 首次那几十天的积压根本消化不动。段与段之间互不依赖，可以并发
- */
-const CHUNK_CONCURRENCY = 3;
-
-/** 向量化的批大小，服务端单次上限 200 */
-const EMBED_BATCH = 200;
-
-/**
- * 单段失败重试几次。上游偶发 90s 超时，整天重来要多烧几十次调用，
- * 就地重试那一段划算得多
- */
-const SEGMENT_RETRY = 2;
-
-/** 重试前等一下，避免上游正忙时几段一起立刻撞回去 */
-const RETRY_DELAY = 5000;
-
-/** 每群已经切完话题的最后一天 */
-export const topicWatermarkKey = (groupId: number) => `topic:${groupId}`;
-
-/** 某天已经切完的段数，用于天内断点续跑。
- *  段数是按过滤后的行数算的，改了 isNoise 的判据就得换 key，否则老断点会落在错的位置 */
-export const dayProgressKey = (groupId: number, dateKey: number) => `topic:v2:${groupId}:${dateKey}`;
-
-/** 过滤噪声行之前的断点，认不出来就当没切过，这一天会整天重切 */
-const legacyDayProgressKey = (groupId: number, dateKey: number) => `topic:${groupId}:${dateKey}`;
-
-const sleep = (ms: number) => new Promise((r) => { setTimeout(r, ms); });
-
-/** `[表情]` `[图片]` 这类占位符 */
-const PLACEHOLDER_RE = /\[[^\]]{1,10}\]/g;
-
-/**
- * 剥掉占位符和空白后没剩几个字的行。prompt 本来就要求跳过这些，
- * 但它们占全库四分之一，发过去纯烧 token
- */
-function isNoise(body: string): boolean {
-  return body.replace(PLACEHOLDER_RE, '').replace(/\s+/g, '').length <= 2;
-}
-
-/** 切一段，暂时失败就重试；被内容审核拒收的不重试，重试永远还是拒收 */
-async function segmentWithRetry(
-  slice: TopicLine[],
-  groupId: number,
-  dateKey: number,
-) {
-  for (let attempt = 0; ; attempt++) {
-    const result = await segmentTopics(slice);
-    if (result !== null || attempt >= SEGMENT_RETRY) return result;
-    printError(`[Consolidate] 群 ${groupId} ${dateKey} 有一段切失败，${RETRY_DELAY / 1000}s 后重试（第 ${attempt + 1} 次）`);
-    await sleep(RETRY_DELAY);
-  }
-}
-
-/** 覆盖每轮的封顶与并发，用于本地一次性消化历史积压 */
-export interface ConsolidateOptions {
-  maxDays?: number;
-  maxChunks?: number;
-  concurrency?: number;
-}
+/** 补向量最多跑几轮。换模型后要把 45 天内的全部重算，每轮只捞一批，得循环 */
+const BACKFILL_ROUNDS = 30;
 
 export interface ConsolidateStats {
   ingestedLines: number;
-  days: number;
-  topics: number;
+  /** 新切的语义窗口数 */
+  windows: number;
   embedded: number;
   evicted: number;
-  /** 被上游内容审核拒收、只能跳过的段数 */
-  skipped: number;
 }
 
 export interface ConsolidationBacklog {
-  days: number;
-  chunks: number;
-  lines: number;
+  /** 已切好但还没有向量的窗口 */
+  windows: number;
+  /** 还没有向量的有效记忆 */
+  memories: number;
+  /** 最早一个缺向量窗口的日期 */
   oldestDate: number | null;
 }
 
@@ -111,335 +47,162 @@ export interface ConsolidationRun {
   startedAt: number;
   finishedAt: number | null;
   status: 'running' | 'success' | 'failed';
-  pendingDaysBefore: number;
-  pendingChunksBefore: number;
-  pendingLinesBefore: number;
-  pendingDaysAfter: number | null;
-  pendingChunksAfter: number | null;
-  pendingLinesAfter: number | null;
+  pendingBefore: number;
+  pendingAfter: number | null;
   oldestPendingDate: number | null;
   ingestedLines: number;
-  processedDays: number;
-  topics: number;
+  windows: number;
   embedded: number;
   evicted: number;
-  skipped: number;
   error: string | null;
 }
 
-/** 分批向量化并入库，返回成功条数 */
+/** 分批向量化并入库，返回成功条数；aborted 表示连续失败提前停了 */
 async function embedAll(
   db: MemoryDatabase,
   refKind: RefKind,
   rows: { id: number, text: string }[],
-): Promise<number> {
+): Promise<{ done: number, aborted: boolean }> {
   let done = 0;
+  let fails = 0;
   for (let i = 0; i < rows.length; i += EMBED_BATCH) {
+    if (i > 0) await sleep(EMBED_INTERVAL);
     const batch = rows.slice(i, i + EMBED_BATCH);
-    const vectors = await embedTexts(batch.map((r) => r.text));
-    if (!vectors) {
+    const result = await embedTexts(batch.map((r) => r.text));
+    if (!result) {
       // 整批失败就跳过，下轮巩固还会把它们当成缺向量的重新捞出来
       printError(`[Consolidate] ${batch.length} 条 ${refKind} 向量化失败`);
+      if (++fails >= MAX_CONSECUTIVE_FAILS) {
+        printError(`[Consolidate] 连续 ${fails} 批向量化失败，停止本轮补向量`);
+        return { done, aborted: true };
+      }
     } else {
-      done += saveEmbeddings(db, refKind, batch.map((r, j) => ({ refId: r.id, vec: vectors[j] })));
+      fails = 0;
+      done += saveEmbeddings(db, refKind, batch.map((r, j) => ({ refId: r.id, vec: result.vectors[j], sourceText: r.text })), result.model);
     }
   }
-  return done;
+  return { done, aborted: false };
 }
 
-/** 把某群某天的日志切成话题写进 topic 表，返回新增条数、用掉的调用次数与被拒收跳过的段数 */
-async function segmentDay(
-  db: MemoryDatabase,
-  groupId: number,
-  dateKey: number,
-  chunkBudget: number,
-  concurrency: number,
-): Promise<{ topics: number, chunks: number, embedded: number, skipped: number, complete: boolean }> {
-  // bot 自己的发言也带上：少了它对话就不完整，概括容易跑偏
-  const rows = db.prepare(
-    'SELECT id, user_id AS userId, nick, text FROM chat_line WHERE group_id = ? AND date_key = ? ORDER BY id',
-  ).all(groupId, dateKey) as { id: number, userId: number, nick: string | null, text: string }[];
+const MISSING_MEMORY_SQL = () => `FROM memory m
+  LEFT JOIN embedding e ON e.ref_kind = 'memory' AND e.ref_id = m.id
+  WHERE ${usableMemorySql()} AND e.ref_id IS NULL`;
 
-  // 噪声行不发给模型。它们夹在话题中间，lineFrom/lineTo 的区间照样覆盖得到，
-  // 只有正好落在片段首尾的会被漏掉，无所谓
-  const lines: TopicLine[] = rows.flatMap((r) => {
-    const body = r.userId === 0 ? r.text : stripSpeakerPrefix(r.text);
-    return isNoise(body) ? [] : [{
-      id: r.id, userId: r.userId, nick: r.nick, body,
-    }];
-  });
-  if (lines.length === 0) {
-    return {
-      topics: 0, chunks: 0, embedded: 0, skipped: 0, complete: true,
-    };
-  }
+const MISSING_WINDOW_SQL = () => `FROM chat_window w
+  LEFT JOIN embedding e ON e.ref_kind = 'window' AND e.ref_id = w.id
+  WHERE e.ref_id IS NULL AND w.date_key >= ${historySince()}`;
 
-  // 这一天上轮可能跑到一半失败过。已完成的段数记在 meta 里，从断点接着切，
-  // 前面切好的话题原样保留；只有从头开始时才清残留，避免写出重复话题
-  const doneKey = dayProgressKey(groupId, dateKey);
-  const doneChunks = Number(getMeta(db, doneKey) ?? 0);
-  if (doneChunks === 0) {
-    delMeta(db, legacyDayProgressKey(groupId, dateKey));
-    const stale = db.prepare('SELECT id FROM topic WHERE group_id = ? AND date_key = ?')
-      .all(groupId, dateKey) as { id: number }[];
-    if (stale.length > 0) {
-      db.transaction(() => {
-        db.prepare('DELETE FROM topic WHERE group_id = ? AND date_key = ?').run(groupId, dateKey);
-        const del = db.prepare("DELETE FROM embedding WHERE ref_kind = 'topic' AND ref_id = ?");
-        stale.forEach(({ id }) => del.run(id));
-      })();
-    }
-  }
-
-  const insert = db.prepare(
-    'INSERT INTO topic (group_id, date_key, summary, user_ids, line_from, line_to) VALUES (?, ?, ?, ?, ?, ?)',
-  );
-
-  const slices: typeof lines[] = [];
-  for (let i = doneChunks * TOPIC_CHUNK; i < lines.length && slices.length < chunkBudget; i += TOPIC_CHUNK) {
-    slices.push(lines.slice(i, i + TOPIC_CHUNK));
-  }
-
-  let topics = 0;
-  let chunks = 0;
-  let embedded = 0;
-  let skipped = 0;
-  for (let i = 0; i < slices.length; i += concurrency) {
-    const wave = slices.slice(i, i + concurrency);
-    chunks += wave.length;
-
-    const results = await Promise.all(wave.map((slice) => segmentWithRetry(slice, groupId, dateKey)));
-    // 重试完还是失败就中断这一天，水位不推进；下轮从 doneChunks 处接着切，前面的不白跑
-    if (results.some((r) => r === null)) {
-      printError(`[Consolidate] 群 ${groupId} ${dateKey} 切话题失败，已完成 ${doneChunks + i} 段`);
-      return {
-        topics: -1, chunks, embedded, skipped, complete: false,
-      };
-    }
-
-    // 被内容审核拒收的段重试永远失败，跳过它继续，否则这一天的水位永远推不过去。
-    // 代价是这几百行只剩字面索引、没有话题向量，比整天卡死划算
-    const ok = results.filter((r): r is TopicSegment[] => r !== TOPIC_REJECTED);
-    if (ok.length < results.length) {
-      skipped += results.length - ok.length;
-      printError(`[Consolidate] 群 ${groupId} ${dateKey} 有 ${results.length - ok.length} 段被内容审核拒收，跳过`);
-    }
-
-    const created: { id: number, text: string }[] = [];
-    // 话题和断点同一个事务：中途被杀也不会出现「写了话题但断点没推进」而重复切
-    db.transaction(() => {
-      ok.flat().forEach((t) => {
-        const info = insert.run(groupId, dateKey, t.summary, JSON.stringify(t.userIds ?? []), t.lineFrom, t.lineTo);
-        created.push({ id: Number(info.lastInsertRowid), text: t.summary });
-      });
-      setMeta(db, doneKey, String(doneChunks + i + wave.length));
-    })();
-
-    embedded += await embedAll(db, 'topic', created);
-    topics += created.length;
-  }
-
-  // 段数封顶可能把这一天截断了，没切完就不算完成，断点留着下轮接
-  const complete = (doneChunks + slices.length) * TOPIC_CHUNK >= lines.length;
-  if (complete) delMeta(db, doneKey);
-  return {
-    topics, chunks, embedded, skipped, complete,
-  };
+/** 还缺多少向量。窗口每轮都会切齐，真正会积压的只有向量化 */
+export function getConsolidationBacklog(db: MemoryDatabase = getMemoryDb()): ConsolidationBacklog {
+  const w = db.prepare(`SELECT count(*) AS n, min(w.date_key) AS oldest ${MISSING_WINDOW_SQL()}`).get() as { n: number, oldest: number | null };
+  const m = db.prepare(`SELECT count(*) AS n ${MISSING_MEMORY_SQL()}`).get() as { n: number };
+  return { windows: w.n, memories: m.n, oldestDate: w.oldest };
 }
 
-/** 找出这个群还没切过话题的日子（不含今天，今天还在追加） */
-function pendingDays(db: MemoryDatabase, groupId: number, limit: number): number[] {
-  const done = Number(getMeta(db, topicWatermarkKey(groupId)) ?? 0);
-  const today = Number(backupDateKey());
-  const rows = db.prepare(
-    'SELECT DISTINCT date_key FROM chat_line WHERE group_id = ? AND date_key > ? AND date_key < ? ORDER BY date_key LIMIT ?',
-  ).all(groupId, done, today, limit) as { date_key: number }[];
-  return rows.map((r) => r.date_key);
+async function backfillOnce(db: MemoryDatabase): Promise<{ done: number, aborted: boolean }> {
+  const memories = db.prepare(`SELECT m.id, m.text ${MISSING_MEMORY_SQL()} ORDER BY m.id LIMIT 500`).all() as { id: number, text: string }[];
+  const windows = db.prepare(`SELECT w.id, w.text ${MISSING_WINDOW_SQL()} ORDER BY w.id LIMIT 2000`).all() as { id: number, text: string }[];
+  const m = await embedAll(db, 'memory', memories);
+  if (m.aborted) return m;
+  const w = await embedAll(db, 'window', windows);
+  return { done: m.done + w.done, aborted: w.aborted };
 }
 
-/** Current topic backlog across configured groups. Partial-day progress is deducted approximately by chunk size. */
-export function getConsolidationBacklog(
-  groupIds: number[],
-  db: MemoryDatabase = getMemoryDb(),
-): ConsolidationBacklog {
-  const today = Number(backupDateKey());
-  const result: ConsolidationBacklog = {
-    days: 0, chunks: 0, lines: 0, oldestDate: null,
-  };
-
-  [...new Set(groupIds)].forEach((groupId) => {
-    const done = Number(getMeta(db, topicWatermarkKey(groupId)) ?? 0);
-    const rows = db.prepare(`
-      SELECT date_key AS dateKey, count(*) AS lines
-      FROM chat_line
-      WHERE group_id = ? AND date_key > ? AND date_key < ?
-      GROUP BY date_key ORDER BY date_key
-    `).all(groupId, done, today) as { dateKey: number, lines: number }[];
-
-    rows.forEach(({ dateKey, lines }) => {
-      const partial = Number(getMeta(db, dayProgressKey(groupId, dateKey)) ?? 0);
-      const remainingLines = Math.max(0, lines - partial * TOPIC_CHUNK);
-      const remainingChunks = Math.max(0, Math.ceil(lines / TOPIC_CHUNK) - partial);
-      if (remainingChunks === 0) return;
-      result.days += 1;
-      result.lines += remainingLines;
-      result.chunks += remainingChunks;
-      if (result.oldestDate === null || dateKey < result.oldestDate) result.oldestDate = dateKey;
-    });
-  });
-  return result;
-}
-
-/** 补齐缺向量的记忆和话题。抽取时服务不可用、或上面切话题时向量化失败的，都靠这里兜住 */
+/** 补齐缺向量的记忆和窗口。服务不可用时漏掉的、换模型后被清空的，都靠这里兜住 */
 async function backfillMissingVectors(db: MemoryDatabase): Promise<number> {
-  const memories = db.prepare(`
-    SELECT m.id, m.text FROM memory m
-    LEFT JOIN embedding e ON e.ref_kind = 'memory' AND e.ref_id = m.id
-    WHERE m.superseded_by IS NULL AND e.ref_id IS NULL ORDER BY m.id
-  `).all() as { id: number, text: string }[];
-
-  const topics = db.prepare(`
-    SELECT t.id, t.summary AS text FROM topic t
-    LEFT JOIN embedding e ON e.ref_kind = 'topic' AND e.ref_id = t.id
-    WHERE e.ref_id IS NULL ORDER BY t.id
-  `).all() as { id: number, text: string }[];
-
-  return await embedAll(db, 'memory', memories) + await embedAll(db, 'topic', topics);
+  let total = 0;
+  for (let round = 0; round < BACKFILL_ROUNDS; round++) {
+    const { done, aborted } = await backfillOnce(db);
+    total += done;
+    // 缺的都补完了，或服务在拒，都别再空转
+    if (done === 0 || aborted) break;
+  }
+  return total;
 }
 
 /**
- * 跑一次巩固。groupIds 是要切话题的群（默认取 initiativeList），
- * 字面索引对所有群都建，但切话题要花 LLM 调用，只对会主动插话的群做
+ * 跑一次巩固。groupIds 是要切语义窗口的群（默认取 initiativeList），
+ * 字面索引对所有群都建，窗口要花 embedding，只对会主动插话的群做
  */
 export async function consolidateMemory(
   groupIds: number[],
   db: MemoryDatabase = getMemoryDb(),
-  opts: ConsolidateOptions = {},
 ): Promise<ConsolidateStats> {
-  const maxDays = opts.maxDays ?? MAX_DAYS_PER_RUN;
-  const concurrency = opts.concurrency ?? CHUNK_CONCURRENCY;
   const stats: ConsolidateStats = {
-    ingestedLines: 0, days: 0, topics: 0, embedded: 0, evicted: 0, skipped: 0,
+    ingestedLines: 0, windows: 0, embedded: 0, evicted: 0,
   };
 
-  // 1. 先把新备份行导进来，话题要从 chat_line 里取
+  // 1. 先把新备份行导进来，窗口要从 chat_line 里取
+  maintainMemory(db);
   stats.ingestedLines = ingestChatBackups(db).lines;
 
-  // 2. 切话题 + 向量化，天数和调用次数都封顶
-  let chunkBudget = opts.maxChunks ?? MAX_CHUNKS_PER_RUN;
-  for (const groupId of groupIds) {
-    if (chunkBudget <= 0) break;
-    for (const dateKey of pendingDays(db, groupId, maxDays)) {
-      if (chunkBudget <= 0) break;
-      const {
-        topics, chunks, embedded, skipped, complete,
-      } = await segmentDay(db, groupId, dateKey, chunkBudget, concurrency);
-      chunkBudget -= chunks;
-      stats.embedded += embedded;
-      stats.skipped += skipped;
-      // 中途失败或段数封顶截断了这一天，水位都不推进；断点记在 meta 里，下轮接着切
-      if (topics < 0) break;
-      if (!complete) break;
-      setMeta(db, topicWatermarkKey(groupId), String(dateKey));
-      stats.days += 1;
-      stats.topics += topics;
-    }
-  }
+  // 2. 切语义窗口，今天的满员窗口也算；向量统一在下一步补
+  [...new Set(groupIds)].forEach((groupId) => {
+    stats.windows += buildWindows(db, groupId, historySince()).length;
+  });
 
-  // 3. 补齐漏掉的向量：抽取时服务不可用、或上面某批向量化失败的，都在这里兜住
-  stats.embedded += await backfillMissingVectors(db);
+  // 3. 补向量：新窗口、抽取时服务不可用漏掉的记忆、换模型后被清空的，一并补齐
+  stats.embedded = await backfillMissingVectors(db);
 
   // 4. 淘汰。分数里已经含时间衰减，不需要另外写一遍「衰减」
   const owners = db.prepare(
-    "SELECT DISTINCT owner_id FROM memory WHERE scope = 'user' AND superseded_by IS NULL",
+    "SELECT DISTINCT owner_id FROM memory WHERE scope = 'user'",
   ).all() as { owner_id: number }[];
   owners.forEach(({ owner_id }) => {
     stats.evicted += memoryStore.evict(owner_id, db).length;
   });
 
-  printLog(`[Consolidate] 导入 ${stats.ingestedLines} 行、切了 ${stats.days} 天共 ${stats.topics} 个话题、`
-    + `向量化 ${stats.embedded} 条、淘汰 ${stats.evicted} 条`
-    + `${stats.skipped > 0 ? `、跳过 ${stats.skipped} 段（内容审核拒收）` : ''}`);
+  printLog(`[Consolidate] 导入 ${stats.ingestedLines} 行、新增 ${stats.windows} 个语义窗口、`
+    + `向量化 ${stats.embedded} 条、淘汰 ${stats.evicted} 条`);
   return stats;
 }
 
-/** Run one scheduled consolidation and persist its lifecycle plus before/after backlog. */
+const pendingOf = (b: ConsolidationBacklog) => b.windows + b.memories;
+
+/** 跑一次定时巩固，把起止状态和前后积压记进 consolidation_run，给管理面板看 */
 export async function consolidateMemoryTracked(
   groupIds: number[],
   db: MemoryDatabase = getMemoryDb(),
   runner: (ids: number[], database: MemoryDatabase) => Promise<ConsolidateStats> = consolidateMemory,
 ): Promise<ConsolidateStats> {
-  const before = getConsolidationBacklog(groupIds, db);
-  const startedAt = Date.now();
+  const before = getConsolidationBacklog(db);
   const info = db.prepare(`
-    INSERT INTO consolidation_run
-      (started_at, status, pending_days_before, pending_chunks_before,
-       pending_lines_before, oldest_pending_date)
-    VALUES (?, 'running', ?, ?, ?, ?)
-  `).run(startedAt, before.days, before.chunks, before.lines, before.oldestDate);
+    INSERT INTO consolidation_run (started_at, status, pending_before, oldest_pending_date)
+    VALUES (?, 'running', ?, ?)
+  `).run(Date.now(), pendingOf(before), before.oldestDate);
   const runId = Number(info.lastInsertRowid);
 
   try {
     const stats = await runner(groupIds, db);
-    const after = getConsolidationBacklog(groupIds, db);
+    const after = getConsolidationBacklog(db);
     db.prepare(`
       UPDATE consolidation_run SET
-        finished_at = ?, status = 'success', pending_days_after = ?,
-        pending_chunks_after = ?, pending_lines_after = ?, oldest_pending_date = ?,
-        ingested_lines = ?, processed_days = ?, topics = ?, embedded = ?,
-        evicted = ?, skipped = ?
+        finished_at = ?, status = 'success', pending_after = ?, oldest_pending_date = ?,
+        ingested_lines = ?, windows = ?, embedded = ?, evicted = ?
       WHERE id = ?
-    `).run(
-      Date.now(),
-      after.days,
-      after.chunks,
-      after.lines,
-      after.oldestDate,
-      stats.ingestedLines,
-      stats.days,
-      stats.topics,
-      stats.embedded,
-      stats.evicted,
-      stats.skipped,
-      runId,
-    );
+    `).run(Date.now(), pendingOf(after), after.oldestDate, stats.ingestedLines, stats.windows, stats.embedded, stats.evicted, runId);
     return stats;
   } catch (error) {
-    const after = getConsolidationBacklog(groupIds, db);
+    const after = getConsolidationBacklog(db);
     db.prepare(`
       UPDATE consolidation_run SET
-        finished_at = ?, status = 'failed', pending_days_after = ?,
-        pending_chunks_after = ?, pending_lines_after = ?, oldest_pending_date = ?, error = ?
+        finished_at = ?, status = 'failed', pending_after = ?, oldest_pending_date = ?, error = ?
       WHERE id = ?
-    `).run(
-      Date.now(),
-      after.days,
-      after.chunks,
-      after.lines,
-      after.oldestDate,
-      String(error).slice(0, 2000),
-      runId,
-    );
+    `).run(Date.now(), pendingOf(after), after.oldestDate, String(error).slice(0, 2000), runId);
     throw error;
   }
 }
 
-/** Recent scheduled runs for the admin panel. */
+/** 最近几次定时巩固，给管理面板看 */
 export function listConsolidationRuns(
   db: MemoryDatabase = getMemoryDb(),
   limit = 10,
 ): ConsolidationRun[] {
   return db.prepare(`
     SELECT id, started_at AS startedAt, finished_at AS finishedAt, status,
-      pending_days_before AS pendingDaysBefore,
-      pending_chunks_before AS pendingChunksBefore,
-      pending_lines_before AS pendingLinesBefore,
-      pending_days_after AS pendingDaysAfter,
-      pending_chunks_after AS pendingChunksAfter,
-      pending_lines_after AS pendingLinesAfter,
-      oldest_pending_date AS oldestPendingDate,
-      ingested_lines AS ingestedLines, processed_days AS processedDays,
-      topics, embedded, evicted, skipped, error
+      pending_before AS pendingBefore, pending_after AS pendingAfter,
+      oldest_pending_date AS oldestPendingDate, ingested_lines AS ingestedLines,
+      windows, embedded, evicted, error
     FROM consolidation_run ORDER BY id DESC LIMIT ?
   `).all(Math.max(1, Math.min(50, limit))) as ConsolidationRun[];
 }

@@ -4,9 +4,9 @@ import { printError } from '@/utils/print';
 import { consolidateMemoryTracked } from '@/modules/aiReply/memory/consolidate';
 
 /**
- * 每日四次记忆巩固：切话题、补向量、跑淘汰。
+ * 每日四次记忆巩固：切语义窗口、补向量、跑淘汰。
  *
- * 切话题要花 LLM 调用，只对会主动插话的群做——和记忆抽取的范围保持一致。
+ * 窗口要花 embedding，只对会主动插话的群做——和记忆抽取的范围保持一致。
  * 字面索引不花钱，`consolidateMemory` 里的增量 ingest 对所有群都跑
  */
 const task = new AsyncTask('memoryConsolidateTask', async () => {
