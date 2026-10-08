@@ -18,7 +18,7 @@ export async function getYoutubeLiveStatus(channelName: string): Promise<Youtube
     if (!res.data?.success) return null;
     return res.data as YoutubeLiveStatus;
   } catch (e) {
-    printError(`[NonokaService] getYoutubeLiveStatus API Error (${channelName}): ${e.message}`);
+    printError(`[NonokaService] getYoutubeLiveStatus API Error (${channelName}): ${e.response?.data?.error ?? e.message}`);
     return null;
   }
 }
