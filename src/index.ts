@@ -4,6 +4,7 @@ import nnkSchedule from '@/core/nnkSchedule';
 import { NonokaAdmin } from '@/core/admin';
 import SystemCleanupJob from '@/tasks/clean';
 import MemoryConsolidateJob from '@/tasks/memoryConsolidate';
+import BilibiliNewSharedJob from '@/tasks/bilibili';
 import TwitterPushJob from '@/tasks/twitter';
 import YtLivePushJob from '@/tasks/youtube';
 import RequestFriendModule from '@/modules/request/requestFriend';
@@ -46,7 +47,7 @@ ingestOnStartup();
 nnkSchedule.loadJob([
   SystemCleanupJob,
   MemoryConsolidateJob,
-  // BilibiliNewSharedJob,
+  BilibiliNewSharedJob,
   TwitterPushJob,
   YtLivePushJob,
 ]);
