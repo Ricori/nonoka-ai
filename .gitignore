@@ -9,10 +9,7 @@ data/memory
 config.json
 config_github.json
 ecosystem.config.cjs
-
-# Test
-test/ai.ts
-test/forward.ts
+.env
 
 # Logs
 logs

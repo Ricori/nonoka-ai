@@ -172,8 +172,6 @@ data/                     运行期数据：SQLite 记忆库、聊天备份、�
 
 请求失败不立即重试，留待下一轮；并发的成功段照常保存。未完成的一天将分段原文 ID 和完成状态保存到 `meta`，兼容旧 v2 断点；短期租约防止手动与定时任务同时处理同一段，进程异常退出后最多等待 10 分钟即可接手。请求已发出但结果尚未持久化时崩溃，仍可能需要重调；服务端未提供幂等键，不能保证这类情况零重复计费。
 
-`yarn memory:topic-cost` 用只读连接对近 45 天真实语料比较新旧过滤的请求数和正文字符数，不调用模型；`DAYS` 可缩短范围。它不评估摘要质量，字符数也不是计费 token 数。`yarn test:topic` 用临时库验证预算、并发失败、旧断点迁移和重启续跑，不调用模型。
-
 手动巩固默认同样遵守上述预算。可通过 `DAYS`、`DAILY_LIMIT`、`CONCURRENCY` 覆盖本次范围、当天总上限和并发；`DRY=1 yarn memory:consolidate` 是只读预览，不再修改水位。耗尽预算、遇到失败或无进展时脚本停止，避免一轮轮立即重试。以上额度仅针对 `/llm/topic`，不包含独立的 embedding 和人物记忆抽取费用。
 
 **人物归属与历史分层：** 自动抽取只发送明确的第一人称本人陈述，不附带别人的引文；问句、转述和第三人称主体不用于建立档案，非删除操作置信度至少 0.7。`alias` / `relation` 只允许人工维护，模型不能增删改，也不能通过把类型改成 trait 绕过。昵称识别仍直接使用近 45 天消息绑定的账号和昵称。工具遇到歧义称呼时不混合多人的档案。
@@ -182,7 +180,7 @@ v8 迁移把历史未知来源的 alias/relation 隔离，置顶和明确标记�
 
 启动和定时巩固会清理超过 45 天的 `chat_line`、FTS、topic、topic 向量及旧的未完成话题计划；热向量缓存也只装载可用数据，补齐任务不会复活冷历史。冷层使用原有 `data/memory/chat/*.txt` 备份。`yarn memory:maintain` 只读预览；加 `--apply` 会先在 `data/memory/backups/` 保存 SQLite 一致性备份，再执行迁移、清理、FTS 合并和 VACUUM。备份另占磁盘空间，热库缩小不代表备份总量也缩小。
 
-`yarn test:memory-policy` 验证 14 条配额、身份隔离/确认、向量失效和历史不复活。`yarn memory:eval -- 0 --stored-topics` 从真实热历史抽样 30 个话题，用已有向量离线检查来源原文能否回溯及群/时间边界，不发模型请求；这是已存话题回放，不替代独立标注的相关性评测。
+`yarn test` 用临时库验证老库拒开、备份导入、跨群隔离、向量失效、身份防伪和重排回退，不调用模型。`yarn memory:eval -- 0 --stored-topics` 从真实热历史抽样 30 个话题，用已有向量离线检查来源原文能否回溯及群/时间边界，不发模型请求；这是已存话题回放，不替代独立标注的相关性评测。
 
 ## 部署
 
@@ -200,7 +198,7 @@ yarn lint-fix             # 自动修复
 yarn memory:consolidate   # 手动触发记忆巩固
 yarn memory:probe         # 记忆召回探测
 yarn memory:eval          # 记忆召回评测（真实语料，非合成数据）
-yarn test                 # 跑 test/ 下的测试脚本
+yarn test                 # 关键用例：记忆（test/memory.ts）+ 回复（test/reply.ts）
 ```
 
 ## 参考
@@ -210,7 +208,7 @@ yarn test                 # 跑 test/ 下的测试脚本
 
 ### AI 回复
 
-- **群聊**（[src/modules/aiReply/group](src/modules/aiReply/group)，事件 `group`）：每条消息先入库（`messageStorage` + `aliasIndex`），再决定是否回复——被 `@` 必回，否则交给 `trigger.ts` 的概率状态机。同群回复做了 3.5s 防抖（`sessionTimers`）+ 并发锁（`processingLocks`）避免刷屏时连续触发。`generateReply.ts` 组装历史 + 记忆上下文 + 系统提示，按场景裁剪工具集（记忆工具常驻，生图/搜图按开关启用），控制工具调用轮数：被 `@` 1 轮，插话 0 轮（插话不该拖慢群里的节奏）。`voiceState.ts` 是按群维护的 TTS 开关。
+- **群聊**（[src/modules/aiReply/group](src/modules/aiReply/group)，事件 `group`）：每条消息先入库（`messageStorage` + `aliasIndex`），再决定是否回复——被 `@` 必回，否则交给 `trigger.ts`：关键词与 @ 衰减算出每小时的插话预算，再按时机分（群友正在找 bot、纯表情、在回复别人）把概率挪到更容易接上话的消息，超预算就收紧；离线回放见 `scripts/initiativeReplay.ts`。同群回复做了 3.5s 防抖（`sessionTimers`）+ 并发锁（`processingLocks`）避免刷屏时连续触发。`generateReply.ts` 组装历史 + 记忆上下文 + 系统提示，按场景裁剪工具集（记忆工具常驻，生图/搜图按开关启用），控制工具调用轮数：被 `@` 1 轮，插话 0 轮（插话不该拖慢群里的节奏）。`voiceState.ts` 是按群维护的 TTS 开关。
 - **私聊**（[src/modules/aiReply/private](src/modules/aiReply/private)，事件 `private`）：无防抖、无触发概率、无工具循环，收到即格式化 → 追加历史 → `getLLMReply` → 分段发送，是群聊流程的简化版。
 
 ### 格式化与发送
