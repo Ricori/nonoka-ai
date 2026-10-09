@@ -11,7 +11,8 @@ export function randomText(textArr: string[]) {
  * @returns 有则返回true
  */
 export function hasImage(msg: string) {
-  return hasCQCode(msg, 'image');
+  // 残缺的图片 CQ 码解析不出图，不算有图，调用方可放心取 getImgs(msg)[0]
+  return hasCQCode(msg, 'image') && getImgs(msg).length > 0;
 }
 
 

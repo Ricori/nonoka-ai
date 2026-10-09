@@ -4,6 +4,7 @@ import { PrivateMessageData } from '@/types/event';
 import { createMsgFromTweetId } from '@/service/twitter/message';
 import messageStorage from '@/modules/aiReply/storage/message';
 import nnkSchedule from '@/core/nnkSchedule';
+import { isBotAdmin } from '@/modules/common/permission';
 
 const HELP_TEXT = [
   '=== Nonoka Admin Commands ===',
@@ -23,17 +24,19 @@ const HELP_TEXT = [
   '  推送推文到指定群组',
   '  示例: /p 123456 https://twitter.com/user/status/123456',
   '  示例: /p 123456 123456',
-  '',
-  '/tts <text>',
-  '  文字转语音',
-  '  示例: /tts おはようございます。',
 ].join('\n');
+
+/** /task 名称 → 定时任务 id */
+const TASK_IDS = new Map([
+  ['twitter', 'twitterPush'],
+  ['bilibili', 'bilibiliNewShared'],
+]);
 
 type AdminCommand =
   | { cmd: 'help' }
   | { cmd: 'cleanMemory' }
-  | { cmd: 'task'; task: string; action: string }
-  | { cmd: 'pushTweet'; groupId: string; tweetId: string };
+  | { cmd: 'task'; task: string; enable: boolean }
+  | { cmd: 'pushTweet'; groupId: number; tweetId: string };
 
 class AdminModule extends NonokaModule<PrivateMessageData, AdminCommand> {
   readonly name = 'AdminModule';
@@ -41,27 +44,21 @@ class AdminModule extends NonokaModule<PrivateMessageData, AdminCommand> {
   readonly events: EventKind[] = ['private'];
 
   match(ctx: ModuleContext<PrivateMessageData>): AdminCommand | false {
-    // Check userId in admin list
-    const adminList = nnkbot.config.admin || [];
-    if (adminList.indexOf(ctx.data.user_id) === -1) {
-      return false;
-    }
-    // Exec administrator command
-    const { message } = ctx.data;
-    if (message === '/help') {
-      return { cmd: 'help' };
-    }
-    if (message === '/clean-memory') {
-      return { cmd: 'cleanMemory' };
-    }
-    const taskControlMatch = message.match(/^\/task\s+(\w+)\s+(on|off)$/);
-    if (taskControlMatch) {
-      return { cmd: 'task', task: taskControlMatch[1], action: taskControlMatch[2] };
-    }
-    const pushTweetMatch = message.match(/^\/p\s+(\d+).*(?:status\/|\s+)(\d+)$/);
-    if (pushTweetMatch) {
-      return { cmd: 'pushTweet', groupId: pushTweetMatch[1], tweetId: pushTweetMatch[2] };
-    }
+    const { user_id: userId, message } = ctx.data;
+    if (!isBotAdmin(userId)) return false;
+
+    if (message === '/help') return { cmd: 'help' };
+
+    if (message === '/clean-memory') return { cmd: 'cleanMemory' };
+
+    // /task <taskName> <on|off>
+    const taskMatch = message.match(/^\/task\s+(\w+)\s+(on|off)$/);
+    if (taskMatch) return { cmd: 'task', task: taskMatch[1], enable: taskMatch[2] === 'on' };
+
+    // /p <groupId> <tweetUrl|tweetId>
+    const pushTweetMatch = message.match(/^\/p\s+(\d+)\s+(?:\S*status\/)?(\d+)$/);
+    if (pushTweetMatch) return { cmd: 'pushTweet', groupId: Number(pushTweetMatch[1]), tweetId: pushTweetMatch[2] };
+
     return false;
   }
 
@@ -70,50 +67,44 @@ class AdminModule extends NonokaModule<PrivateMessageData, AdminCommand> {
       case 'help':
         ctx.reply(HELP_TEXT);
         return;
+
       case 'cleanMemory':
         messageStorage.cleanChatConversations();
         ctx.reply('[NonokaSystem] Memory cleaned.');
         return;
+
       case 'task':
-        this.handleTaskControl(ctx, hit.task, hit.action);
+        this.handleTaskControl(ctx, hit.task, hit.enable);
         return;
+
       case 'pushTweet': {
         const msgArr = await createMsgFromTweetId(hit.tweetId);
-        if (!msgArr || msgArr.length === 0) return;
+        if (!msgArr?.length) return;
         for (const msg of msgArr) {
-          nnkbot.sendGroupMsg(Number(hit.groupId), msg);
+          nnkbot.sendGroupMsg(hit.groupId, msg);
         }
-        ctx.reply(`[NonokaSystem] Push ${hit.tweetId} to ${hit.groupId} successed.`);
+        ctx.reply(`[NonokaSystem] Push ${hit.tweetId} to ${hit.groupId} succeeded.`);
         break;
       }
+
       default:
     }
   }
 
   /** 定时任务开关控制 */
-  private handleTaskControl(ctx: ModuleContext<PrivateMessageData>, task: string, action: string) {
-    switch (task) {
-      case 'twitter':
-        if (action === 'on') {
-          nnkSchedule.startById('twitterPush');
-          ctx.reply('[NonokaSystem] Twitter task enabled.');
-        } else {
-          nnkSchedule.stopById('twitterPush');
-          ctx.reply('[NonokaSystem] Twitter task disabled.');
-        }
-        return;
-      case 'bilibili':
-        if (action === 'on') {
-          nnkSchedule.startById('bilibiliNewShared');
-          ctx.reply('[NonokaSystem] Bilibili task enabled.');
-        } else {
-          nnkSchedule.stopById('bilibiliNewShared');
-          ctx.reply('[NonokaSystem] Bilibili task disabled.');
-        }
-        return;
-      default:
-        ctx.reply('[NonokaSystem] Unsupported task.');
+  private handleTaskControl(ctx: ModuleContext<PrivateMessageData>, task: string, enable: boolean) {
+    const taskId = TASK_IDS.get(task);
+    if (!taskId) {
+      ctx.reply('[NonokaSystem] Unsupported task.');
+      return;
     }
+
+    if (enable) {
+      nnkSchedule.startById(taskId);
+    } else {
+      nnkSchedule.stopById(taskId);
+    }
+    ctx.reply(`[NonokaSystem] Task ${task} ${enable ? 'enabled' : 'disabled'}.`);
   }
 }
 
