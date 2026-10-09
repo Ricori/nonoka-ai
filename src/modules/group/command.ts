@@ -13,7 +13,11 @@ type GroupCommand =
   | { cmd: 'initiative'; action?: string }
   | { cmd: 'voice'; action?: string }
   | { cmd: 'pushTweet'; tweetId: string }
-  | { cmd: 'tts'; text: string };
+  | { cmd: 'tts'; text: string }
+  | { cmd: 'ban'; userId?: number; minutes: number };
+
+/** QQ 单次禁言上限 30 天 */
+const MAX_BAN_MINUTES = 30 * 24 * 60;
 
 class GroupCommandModule extends NonokaModule<GroupMessageData, GroupCommand> {
   readonly name = 'GroupCommandModule';
@@ -39,6 +43,16 @@ class GroupCommandModule extends NonokaModule<GroupMessageData, GroupCommand> {
     const ttsMatch = message.match(/^\/tts\s+(.+)$/);
     if (ttsMatch) return { cmd: 'tts', text: ttsMatch[1] };
 
+    // 5. ban - /ban <qq> [minutes]，默认 10 分钟，0 为解除；参数不对时 userId 为空，回复用法
+    if (/^\/ban(\s|$)/.test(message)) {
+      const args = message.trim().match(/^\/ban\s+(\d{5,12})(?:\s+(\d+))?$/);
+      return {
+        cmd: 'ban',
+        userId: args ? Number(args[1]) : undefined,
+        minutes: args?.[2] === undefined ? 10 : Number(args[2]),
+      };
+    }
+
     return false;
   }
 
@@ -63,6 +77,10 @@ class GroupCommandModule extends NonokaModule<GroupMessageData, GroupCommand> {
 
       case 'tts':
         await this.handleTTS(ctx, hit.text);
+        break;
+
+      case 'ban':
+        await this.handleBan(ctx, hit.minutes, hit.userId);
         break;
 
       default:
@@ -114,6 +132,31 @@ class GroupCommandModule extends NonokaModule<GroupMessageData, GroupCommand> {
     const enable = action === 'on';
     setVoiceEnabled(groupId, enable);
     ctx.reply(`[NonokaSystem] 已${enable ? '开启' : '关闭'}语音回复`);
+  }
+
+  /** 禁言（群主/群管理员/bot 管理员可用，bot 自身也需是群管理员） */
+  private async handleBan(ctx: ModuleContext<GroupMessageData>, minutes: number, userId?: number) {
+    const { group_id: groupId, user_id: senderId, sender } = ctx.data;
+    const isGroupAdmin = sender.role === 'owner' || sender.role === 'admin';
+    const isBotAdmin = (nnkbot.config.admin || []).includes(senderId);
+    if (!isGroupAdmin && !isBotAdmin) {
+      ctx.reply('[NonokaSystem] 只有管理员可以禁言', { at: true });
+      return;
+    }
+    if (!userId) {
+      ctx.reply('[NonokaSystem] 用法: /ban QQ号 [分钟]，默认 10 分钟，0 为解除禁言');
+      return;
+    }
+    if (minutes > MAX_BAN_MINUTES) {
+      ctx.reply(`[NonokaSystem] 禁言最长 ${MAX_BAN_MINUTES} 分钟（30 天）`);
+      return;
+    }
+
+    if (await nnkbot.setGroupBan(groupId, userId, minutes * 60)) {
+      ctx.reply(`[NonokaSystem] ${minutes === 0 ? `已解除 ${userId} 的禁言` : `已禁言 ${userId} ${minutes} 分钟`}`);
+    } else {
+      ctx.reply(`[NonokaSystem] 禁言 ${userId} 失败（bot 不是管理员、对方是管理员或不在群里？）`);
+    }
   }
 
   /** 文字转语音（非日文先翻译为日文） */
