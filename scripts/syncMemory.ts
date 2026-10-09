@@ -1,6 +1,6 @@
 /**
  * 把服务器的 data/memory 增量同步到本地，便于用线上数据跑测试。
- * 普通文件按 大小+mtime 比对只拉变化的；nonoka.db 拉服务端一致性快照（--no-db 跳过）。
+ * 普通文件按 大小+mtime 比对只拉变化的，聊天记录只拉最近 CHAT_DAYS 天；nonoka.db 拉服务端一致性快照（--no-db 跳过）。
  *
  * 用法：npm run memory:sync -- [--no-db] [--delete]
  *   --delete  删掉本地有、服务器已没有的文件（不碰 backups 和库文件）
@@ -25,6 +25,9 @@ const ARGS = new Set(process.argv.slice(2));
 const MEMORY_DIR = path.resolve('data', 'memory');
 const DB_FILE = path.join(MEMORY_DIR, 'nonoka.db');
 const CONCURRENCY = 8;
+/** 聊天记录只同步最近这么多天的（按文件名里的日期） */
+const CHAT_DAYS = 45;
+const CHAT_RE = /^chat\/\d+_(\d{8})\.txt$/;
 
 interface RemoteFile { path: string, size: number, mtime: number }
 
@@ -58,8 +61,13 @@ async function syncFiles() {
   const res = await fetch(api('/memory-manifest'));
   if (!res.ok) throw new Error(`拉清单失败: ${res.status} ${await res.text()}`);
   const remote = await res.json() as RemoteFile[];
-  const changed = remote.filter((f) => !isSame(path.join(MEMORY_DIR, f.path), f));
-  console.log(`[sync] 服务器 ${remote.length} 个文件，需更新 ${changed.length} 个`);
+  const cutoff = new Date(Date.now() - CHAT_DAYS * 86400000).toLocaleDateString('sv').replace(/-/g, '');
+  const wanted = remote.filter((f) => {
+    const m = CHAT_RE.exec(f.path);
+    return !m || m[1] >= cutoff;
+  });
+  const changed = wanted.filter((f) => !isSame(path.join(MEMORY_DIR, f.path), f));
+  console.log(`[sync] 服务器 ${remote.length} 个文件，${CHAT_DAYS} 天内 ${wanted.length} 个，需更新 ${changed.length} 个`);
 
   let done = 0;
   const queue = [...changed];
