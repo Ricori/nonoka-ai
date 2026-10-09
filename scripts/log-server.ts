@@ -270,9 +270,13 @@ function syncableFiles(): WalkedFile[] {
   return walkFiles(MEMORY_DIR).filter((f) => !f.rel.startsWith('backups/') && !f.rel.startsWith('nonoka.db'));
 }
 
-/** gzip 流式发送文件，发完回调 */
+/** gzip 流式发送文件，发完回调。X-Original-Size 给客户端算进度 */
 function sendGzip(res: http.ServerResponse, abs: string, done: () => void = () => { }) {
-  res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Encoding': 'gzip' });
+  res.writeHead(200, {
+    'Content-Type': 'application/octet-stream',
+    'Content-Encoding': 'gzip',
+    'X-Original-Size': fs.statSync(abs).size,
+  });
   pipeline(fs.createReadStream(abs), zlib.createGzip(), res, () => done());
 }
 

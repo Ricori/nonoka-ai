@@ -1,15 +1,16 @@
 /**
  * 把服务器的 data/memory 增量同步到本地，便于用线上数据跑测试。
- * 普通文件按 大小+mtime 比对只拉变化的，聊天记录只拉最近 CHAT_DAYS 天；nonoka.db 拉服务端一致性快照（--no-db 跳过）。
+ * 普通文件按 大小+mtime 比对只拉变化的，聊天记录只拉最近 CHAT_DAYS 天；
+ * nonoka.db 要整份拉服务端快照，服务器上行很慢（20 分钟级），默认不拉，加 --db 才拉。
  *
- * 用法：npm run memory:sync -- [--no-db] [--delete]
+ * 用法：npm run memory:sync -- [--db] [--delete]
  *   --delete  删掉本地有、服务器已没有的文件（不碰 backups 和库文件）
  * 配置（环境变量或项目根 .env）：MEMORY_SYNC_URL=http://host:9615  LOG_TOKEN=xxx
  * 同步库前先停掉本地机器人/测试，否则库文件被占用无法替换。
  */
 import fs from 'fs';
 import path from 'path';
-import { Readable } from 'stream';
+import { Readable, Transform } from 'stream';
 import { pipeline } from 'stream/promises';
 import Database from 'better-sqlite3';
 
@@ -38,14 +39,48 @@ function api(pathname: string, params: Record<string, string> = {}): string {
   return u.toString();
 }
 
-/** 下载到 .sync-tmp，成功才返回临时路径，调用方负责改名 */
-async function download(url: string, dest: string): Promise<string> {
+type OnProgress = (got: number, total: number) => void;
+
+/** 下载到 .sync-tmp，成功才返回临时路径，调用方负责改名。进度按解压后字节计 */
+async function download(url: string, dest: string, onProgress?: OnProgress): Promise<string> {
   const res = await fetch(url);
   if (!res.ok || !res.body) throw new Error(`${res.status} ${await res.text()}`);
+  const total = Number(res.headers.get('x-original-size')) || 0;
   const tmp = `${dest}.sync-tmp`;
   fs.mkdirSync(path.dirname(tmp), { recursive: true });
-  await pipeline(Readable.fromWeb(res.body as any), fs.createWriteStream(tmp));
+  let got = 0;
+  const counter = new Transform({
+    transform(chunk: Buffer, _enc, cb) {
+      got += chunk.length;
+      onProgress?.(got, total);
+      cb(null, chunk);
+    },
+  });
+  await pipeline(Readable.fromWeb(res.body as any), counter, fs.createWriteStream(tmp));
   return tmp;
+}
+
+/** 每秒刷新一行进度；旧版服务端不给总大小时只显示已下载量 */
+function progressPrinter(label: string): OnProgress {
+  // 从首个数据块开始计时，不算服务端生成快照的等待，剩余时间才准
+  let started = 0;
+  let last = 0;
+  const mb = (n: number) => (n / 1048576).toFixed(1);
+  const dur = (s: number) => (s >= 60 ? `${Math.floor(s / 60)}分${Math.round(s % 60)}秒` : `${Math.round(s)}秒`);
+  return (got, total) => {
+    const now = Date.now();
+    if (!started) {
+      started = now;
+      last = now;
+      return;
+    }
+    if (now - last < 1000 && got !== total) return;
+    last = now;
+    const elapsed = (now - started) / 1000;
+    let line = `[sync] ${label} ${mb(got)}${total ? `/${mb(total)}` : ''} MB，已用 ${dur(elapsed)}`;
+    if (total && got > 0) line += `，${((got / total) * 100).toFixed(0)}%，剩余约 ${dur(((total - got) / got) * elapsed)}`;
+    process.stdout.write(process.stdout.isTTY ? `\r${line}    ` : `${line}\n`);
+  };
 }
 
 function isSame(abs: string, remote: RemoteFile): boolean {
@@ -97,7 +132,8 @@ async function syncFiles() {
 async function syncDb() {
   console.log('[sync] 拉取数据库快照（服务端先做 VACUUM，需要一会儿）…');
   const started = Date.now();
-  const tmp = await download(api('/memory-db'), DB_FILE);
+  const tmp = await download(api('/memory-db'), DB_FILE, progressPrinter('数据库'));
+  if (process.stdout.isTTY) process.stdout.write('\n');
   const check = new Database(tmp, { readonly: true });
   const result = check.pragma('quick_check', { simple: true });
   check.close();
@@ -113,7 +149,8 @@ async function main() {
   if (!BASE) throw new Error('未配置 MEMORY_SYNC_URL（可写在项目根 .env）');
   fs.mkdirSync(MEMORY_DIR, { recursive: true });
   await syncFiles();
-  if (!ARGS.has('--no-db')) await syncDb();
+  if (ARGS.has('--db')) await syncDb();
+  else console.log('[sync] 跳过数据库（需要时加 --db）');
 }
 
 main().catch((err) => {
