@@ -95,11 +95,12 @@ class GroupAIReplyModule extends NonokaModule<GroupMessageData> {
       // 被 @ 的这条不掷骰：掷中会把这次回复降级成主动插话，而主动插话不下发工具
       // 判定放在掷骰之前，免得白白消耗 trigger 内部的冷却与计数状态
       if (!formattedMessage.isMentionMe && !isDrawing(groupId)) {
-        const chance = this.trigger.rollInitiative(groupId, formattedMessage.message);
-        if (chance !== null) {
+        const hit = this.trigger.rollInitiative(groupId, messageStorage.getGroupChatConversations(groupId));
+        if (hit !== null) {
+          printLog(`[GroupAIReplyModule] ${groupId} 主动插话 概率 ${hit.baseChance.toFixed(4)}→${hit.chance.toFixed(4)}`);
           shouldReply = true;
           isInitiativeReply = true;
-          initiativeChance = chance;
+          initiativeChance = hit.chance;
         }
       }
 
