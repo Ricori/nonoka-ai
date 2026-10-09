@@ -21,6 +21,8 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import zlib from 'zlib';
+import os from 'os';
+import { pipeline } from 'stream';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import Database from 'better-sqlite3';
@@ -261,6 +263,17 @@ function walkFiles(dir: string, base: string = dir): WalkedFile[] {
     }
   }
   return out;
+}
+
+/** 增量同步的文件范围：备份不传，库文件走 /memory-db 一致性快照 */
+function syncableFiles(): WalkedFile[] {
+  return walkFiles(MEMORY_DIR).filter((f) => !f.rel.startsWith('backups/') && !f.rel.startsWith('nonoka.db'));
+}
+
+/** gzip 流式发送文件，发完回调 */
+function sendGzip(res: http.ServerResponse, abs: string, done: () => void = () => { }) {
+  res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Encoding': 'gzip' });
+  pipeline(fs.createReadStream(abs), zlib.createGzip(), res, () => done());
 }
 
 /** 用内置 zlib（deflate raw）手写一个最小可用的 zip 打包器，避免引入第三方依赖 */
@@ -600,6 +613,62 @@ const server = http.createServer((req, res) => {
       'Content-Length': zipBuf.length,
     });
     res.end(zipBuf);
+    return;
+  }
+
+  if (url.pathname === '/memory-manifest') {
+    if (!checkAuth(req)) {
+      res.writeHead(401).end('unauthorized');
+      return;
+    }
+    const list = syncableFiles().flatMap(({ abs, rel }) => {
+      try {
+        const st = fs.statSync(abs);
+        return [{ path: rel, size: st.size, mtime: Math.floor(st.mtimeMs) }];
+      } catch {
+        return [];
+      }
+    });
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' }).end(JSON.stringify(list));
+    return;
+  }
+
+  if (url.pathname === '/memory-file') {
+    if (!checkAuth(req)) {
+      res.writeHead(401).end('unauthorized');
+      return;
+    }
+    // 只允许清单里的文件，防止路径穿越
+    const found = syncableFiles().find((f) => f.rel === url.searchParams.get('path'));
+    if (!found) {
+      res.writeHead(404).end('not found');
+      return;
+    }
+    sendGzip(res, found.abs);
+    return;
+  }
+
+  if (url.pathname === '/memory-db') {
+    if (!checkAuth(req)) {
+      res.writeHead(401).end('unauthorized');
+      return;
+    }
+    // 直接拷 db+wal 可能撕裂，用 VACUUM INTO 出一份一致快照再发
+    const tmp = path.join(os.tmpdir(), `nonoka-sync-${Date.now()}.db`);
+    let db: Database.Database | null = null;
+    try {
+      db = new Database(DB_FILE, { readonly: true, fileMustExist: true });
+      db.pragma('busy_timeout = 10000');
+      db.prepare('VACUUM INTO ?').run(tmp);
+    } catch (err) {
+      fs.rmSync(tmp, { force: true });
+      res.writeHead(500).end(`快照失败: ${err}`);
+      return;
+    } finally {
+      db?.close();
+    }
+    // Windows 上句柄可能还没关，删除带重试
+    sendGzip(res, tmp, () => fs.rm(tmp, { force: true, maxRetries: 10, retryDelay: 500 }, () => { }));
     return;
   }
 

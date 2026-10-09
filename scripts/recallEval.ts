@@ -10,7 +10,7 @@ import { searchSimilar } from '@/modules/aiReply/memory/vector';
  * 探针（recallProbe）回答单条查询召回了什么，这里回答**为什么是它们**——
  * 字面那路的 bm25 分、语义那路的窗口相似度、最终结果里有多少条来自同一个窗口、
  * 有多少条是「不赖」这种没信息量的短句。批量跑才看得出是个例还是系统性偏差。
- * 要比命中率、校准阈值用 scripts/semanticAB.ts。
+ * 要比命中率、校准阈值用 scripts/semanticEval.ts。
  *
  * 用法：
  *   npm run memory:eval -- 301750074
