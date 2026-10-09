@@ -56,7 +56,7 @@ class AdminModule extends NonokaModule<PrivateMessageData, AdminCommand> {
     if (taskMatch) return { cmd: 'task', task: taskMatch[1], enable: taskMatch[2] === 'on' };
 
     // /p <groupId> <tweetUrl|tweetId>
-    const pushTweetMatch = message.match(/^\/p\s+(\d+)\s+(?:\S*status\/)?(\d+)$/);
+    const pushTweetMatch = message.match(/^\/p\s+(\d+)\s+(?:\S*status\/)?(\d+)(?:[?#/]\S*)?\s*$/);
     if (pushTweetMatch) return { cmd: 'pushTweet', groupId: Number(pushTweetMatch[1]), tweetId: pushTweetMatch[2] };
 
     return false;

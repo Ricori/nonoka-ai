@@ -40,7 +40,7 @@ class GroupCommandModule extends NonokaModule<GroupMessageData, GroupCommand> {
     if (voiceMatch) return { cmd: 'voice', enable: parseSwitch(voiceMatch[1]) };
 
     // /p <tweetUrl|tweetId>
-    const pushTweetMatch = message.match(/^\/p\s+(?:\S*status\/)?(\d+)$/);
+    const pushTweetMatch = message.match(/^\/p\s+(?:\S*status\/)?(\d+)(?:[?#/]\S*)?\s*$/);
     if (pushTweetMatch) return { cmd: 'pushTweet', tweetId: pushTweetMatch[1] };
 
     // /tts <text>
