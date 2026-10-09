@@ -1,4 +1,4 @@
-# Myself
+# Build
 build
 
 # Data
@@ -30,5 +30,9 @@ node_modules/
 # Yarn Integrity file
 .yarn-integrity
 
-# CLAUDE
+# Agents
 CLAUDE.md
+.claude/
+
+# Docs
+docs/
