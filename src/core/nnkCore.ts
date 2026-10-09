@@ -28,7 +28,7 @@ export abstract class NonokaCore {
   private initializedModules = new Set<AnyNonokaModule>();
 
   /** Send a private message (implemented by the NonokaBot) */
-  abstract sendPrivateMsg(userId: number, msg: string, plainText?: boolean): Promise<void>;
+  abstract sendPrivateMsg(userId: number, msg: string, plainText?: boolean): Promise<number | undefined>;
 
   /** Send a group message (implemented by the NonokaBot)  */
   abstract sendGroupMsg(groupId: number, msg: string, atUser?: number | string, plainText?: boolean): Promise<number | undefined>;
@@ -91,10 +91,9 @@ export abstract class NonokaCore {
   ): ModuleContext {
     const reply = (msg: string, opts: { at?: boolean; plainText?: boolean } = {}) => {
       if ('message_type' in data && data.message_type === 'group') {
-        this.sendGroupMsg(data.group_id, msg, opts.at ? data.user_id : undefined, opts.plainText);
-      } else {
-        this.sendPrivateMsg(data.user_id, msg, opts.plainText);
+        return this.sendGroupMsg(data.group_id, msg, opts.at ? data.user_id : undefined, opts.plainText);
       }
+      return this.sendPrivateMsg(data.user_id, msg, opts.plainText);
     };
     return { data, isAtMe, reply };
   }
