@@ -14,6 +14,7 @@
     "memory:eval": "tsx ./scripts/recallEval.ts",
     "memory:semantic-eval": "tsx ./scripts/semanticEval.ts",
     "memory:sync": "tsx ./scripts/syncMemory.ts",
+    "memory:sync-db": "tsx ./scripts/syncMemory.ts --db",
     "lint": "eslint --ext .ts src/ --quiet",
     "lint-fix": "eslint --fix --ext .ts src/ --quiet"
   },

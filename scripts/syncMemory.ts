@@ -3,7 +3,8 @@
  * 普通文件按 大小+mtime 比对只拉变化的，聊天记录只拉最近 CHAT_DAYS 天；
  * nonoka.db 要整份拉服务端快照，服务器上行很慢（20 分钟级），默认不拉，加 --db 才拉。
  *
- * 用法：npm run memory:sync -- [--db] [--delete]
+ * 用法：npm run memory:sync（不拉库） / npm run memory:sync-db（连库一起）
+ *   PowerShell 的 npm.ps1 会吞掉 `npm run x -- --flag` 里的 --，参数要直接 tsx 传：npx tsx scripts/syncMemory.ts --db --delete
  *   --delete  删掉本地有、服务器已没有的文件（不碰 backups 和库文件）
  * 配置（环境变量或项目根 .env）：MEMORY_SYNC_URL=http://host:9615  LOG_TOKEN=xxx
  * 同步库前先停掉本地机器人/测试，否则库文件被占用无法替换。
@@ -150,7 +151,7 @@ async function main() {
   fs.mkdirSync(MEMORY_DIR, { recursive: true });
   await syncFiles();
   if (ARGS.has('--db')) await syncDb();
-  else console.log('[sync] 跳过数据库（需要时加 --db）');
+  else console.log('[sync] 跳过数据库（需要时用 npm run memory:sync-db）');
 }
 
 main().catch((err) => {
