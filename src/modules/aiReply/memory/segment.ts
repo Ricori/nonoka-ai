@@ -116,6 +116,48 @@ const DEFAULT_TOP_K = 6;
 
 const EN_RE = /^[a-z]+$/;
 
+/** 单字检索词的 idf 下限：5 这条线上「展」8.8「猫」7.7「买」5.5 过，「吃」「谁」「说」「了」不过 */
+const SINGLE_CHAR_MIN_IDF = 5;
+/** 单字再稀有也不如一个完整词，份量压到最轻的整词之下 */
+const SINGLE_CHAR_WEIGHT_RATIO = 0.5;
+/** 一句话最多补几个单字，不让它们挤掉整词的检索路数 */
+const MAX_SINGLE_CHARS = 2;
+/** 单字只补汉字：单个字母数字（a、x、3）在群聊里是纯噪音 */
+const CJK_CHAR_RE = /^\p{Script=Han}$/u;
+
+/** 单字的 idf。表里 27 万词条只留一万多个单字，查表比每次重算便宜 */
+let singleCharIdf: Map<string, number> | null = null;
+
+function getSingleCharIdf(): Map<string, number> {
+  if (!singleCharIdf) {
+    singleCharIdf = new Map();
+    // 行格式 `词 idf`，空格落在第 2 个字符上的就是单字词条
+    for (const line of new TextDecoder().decode(idf).split('\n')) {
+      if (line.indexOf(' ') === 1) singleCharIdf.set(line.slice(0, 1), Number(line.slice(2)));
+    }
+  }
+  return singleCharIdf;
+}
+
+/**
+ * 补单字检索词：extractKeywords 一律不吐单字，不兜一手「谁家里有猫」只剩「家里」、
+ * 「上次说要去的展」一个词都不剩。虚词靠 idf 卡掉，剩下的按稀有度取前几个
+ */
+function singleCharTerms(body: string, taken: Set<string>, weight: number): WeightedTerm[] {
+  const table = getSingleCharIdf();
+  const found = new Map<string, number>();
+  for (const word of getJieba().cut(body)) {
+    const score = table.get(word) ?? 0;
+    if (CJK_CHAR_RE.test(word) && TOKEN_RE.test(word) && !taken.has(word) && score >= SINGLE_CHAR_MIN_IDF) {
+      found.set(word, score);
+    }
+  }
+  return [...found.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, MAX_SINGLE_CHARS)
+    .map(([term]) => ({ term, weight }));
+}
+
 function usable(word: string): boolean {
   const lower = word.toLowerCase();
   if (USELESS_WORDS.has(word) || BOT_ALIASES.has(lower)) return false;
@@ -143,7 +185,11 @@ export function weightedTerms(text: string, topK = DEFAULT_TOP_K): WeightedTerm[
     if (usable(keyword)) terms.push({ term: keyword, weight });
     if (terms.length >= topK) break;
   }
-  return terms;
+
+  // 整词一个都没抽到时权重没有参照，取 1 即可——归一化后它是唯一的一路
+  const floor = terms.length ? Math.min(...terms.map((t) => t.weight)) : 1;
+  const taken = new Set(terms.map((t) => t.term));
+  return [...terms, ...singleCharTerms(body, taken, floor * SINGLE_CHAR_WEIGHT_RATIO)];
 }
 
 export function queryTerms(text: string, topK = DEFAULT_TOP_K): string[] {
