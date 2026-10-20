@@ -97,7 +97,6 @@ class GroupAIReplyModule extends NonokaModule<GroupMessageData> {
       if (!formattedMessage.isMentionMe && !isDrawing(groupId)) {
         const hit = this.trigger.rollInitiative(groupId, messageStorage.getGroupChatConversations(groupId));
         if (hit !== null) {
-          printLog(`[GroupAIReplyModule] ${groupId} 主动插话 概率 ${hit.baseChance.toFixed(4)}→${hit.chance.toFixed(4)}`);
           shouldReply = true;
           isInitiativeReply = true;
           initiativeChance = hit.chance;
