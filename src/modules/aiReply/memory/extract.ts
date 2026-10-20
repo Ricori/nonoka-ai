@@ -7,6 +7,7 @@ import { splitSpeakerPrefix } from './segment';
 import memoryStore from './store';
 import type { EvidenceMessage } from './store';
 import { usableMemory } from './policy';
+import { backupDateKey } from '../storage/message';
 
 /**
  * 记忆写入流水线：攒够一批消息就让 LLM 抽取，再与已有条目调和成增删改操作。
@@ -22,7 +23,7 @@ import { usableMemory } from './policy';
  */
 
 /** 每攒够这么多条有信息量的消息触发一次，可被配置覆盖 */
-const DEFAULT_THRESHOLD = 30;
+const DEFAULT_THRESHOLD = 10;
 
 /** 同一个人两次抽取的最小间隔分钟数，可被配置覆盖 */
 const DEFAULT_COOLDOWN_MIN = 240;
@@ -30,7 +31,7 @@ const DEFAULT_COOLDOWN_MIN = 240;
 /** 一次最多送多少条给 LLM。退避期间攒过头了也只送最近这些，prompt 不能无限涨 */
 const EXTRACT_BATCH = 30;
 
-/** 空转退避最多把阈值翻到几倍（30 -> 240） */
+/** 空转退避最多把阈值翻到几倍（10 -> 80） */
 const MAX_BACKOFF = 8;
 
 /** 对应上面的倍数，2^3 = 8 */
@@ -48,6 +49,15 @@ const IDLE_DROP_MS = 7 * 24 * 60 * 60 * 1000;
 /** 每处理这么多条消息顺手清一次闲置缓冲区 */
 const PRUNE_EVERY = 500;
 
+/** 同一句本人陈述有这么多不同的人说过，就当群梗不抽。2 人那档混着「我是女的」这类真话 */
+const MEME_MIN_USERS = 3;
+
+/** 群梗索引只看最近这么多天，启动时从 chat_line 回填 */
+const MEME_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
+
+/** 抽出来的条目带相对时间说明是一两天的琐事，存一个多月后还会变成错话 */
+const RELATIVE_TIME_RE = /今天|明天|昨天|昨晚|今晚|明早|刚才|刚刚|待会/;
+
 /** formatMessage 把非文字内容换成的占位符，一概不算信息量 */
 const PLACEHOLDER_RE = /\[(表情|图片|视频|语音|聊天记录|卡片消息|之前的图片)\]/g;
 
@@ -63,6 +73,11 @@ export function informativeLength(text: string): number {
     .replace(/https?:\/\/\S+/g, '')
     .replace(/[\s\p{P}\p{S}\p{Extended_Pictographic}]/gu, '')
     .length;
+}
+
+/** 群梗比对用的键：去掉空白标点表情，「我不完全会说中文。」和「我不完全会说中文」算同一句 */
+function phraseKey(text: string): string {
+  return text.replace(/[\s\p{P}\p{S}\p{Extended_Pictographic}]/gu, '');
 }
 
 /** 自动人物档案只接受明确的本人陈述；宁可少记，转述、问句和引文不用于推断身份。 */
@@ -92,6 +107,9 @@ class MemoryExtractor {
   private trackedUsers = new Set<number>();
 
   private pendingBuffers = new Map<number, PendingBuffer>();
+
+  /** 本人陈述 -> 说过它的人。所有人都记，不只追踪对象，否则认不出群梗 */
+  private phraseUsers = new Map<string, { users: Set<number>, lastSeen: number }>();
 
   private loaded = false;
 
@@ -137,6 +155,28 @@ class MemoryExtractor {
     } catch (e) {
       printError(`[MemoryExtract] 加载用户列表失败: ${e}`);
     }
+    try {
+      const since = backupDateKey(new Date(Date.now() - MEME_WINDOW_MS));
+      const rows = getMemoryDb().prepare(
+        'SELECT user_id, text FROM chat_line WHERE date_key >= ? AND user_id != 0',
+      ).iterate(Number(since)) as Iterable<{ user_id: number, text: string }>;
+      for (const r of rows) this.notePhrase(r.user_id, splitSpeakerPrefix(r.text).body.trim(), Date.now());
+    } catch (e) {
+      printError(`[MemoryExtract] 回填群梗索引失败: ${e}`);
+    }
+  }
+
+  private notePhrase(userId: number, text: string, now: number) {
+    if (!isSelfMemoryCandidate(text)) return;
+    const key = phraseKey(text);
+    const entry = this.phraseUsers.get(key) ?? { users: new Set<number>(), lastSeen: now };
+    entry.users.add(userId);
+    entry.lastSeen = now;
+    this.phraseUsers.set(key, entry);
+  }
+
+  private isMeme(text: string): boolean {
+    return (this.phraseUsers.get(phraseKey(text))?.users.size ?? 0) >= MEME_MIN_USERS;
   }
 
   /** 长期不说话的人把缓冲区丢掉。@过一次就永久追踪，不清理的话只增不减 */
@@ -155,6 +195,9 @@ class MemoryExtractor {
     if (dropped > 0) {
       printLog(`[MemoryExtract] 清掉 ${dropped} 个闲置缓冲区，还剩 ${this.pendingBuffers.size} 个`);
     }
+    this.phraseUsers.forEach((entry, key) => {
+      if (now - entry.lastSeen >= MEME_WINDOW_MS) this.phraseUsers.delete(key);
+    });
   }
 
   /**
@@ -174,6 +217,12 @@ class MemoryExtractor {
     this.ensureTracked();
     memoryStore.noteNickName(groupId, userId, nickName);
 
+    // 昵称是单独传给抽取的，`[昵称]说：` 这截前缀 30 条加起来是白烧的 token
+    const { body } = splitSpeakerPrefix(message);
+    const text = body.trim();
+    const now = Date.now();
+    this.notePhrase(userId, text, now);
+
     // 被拉黑的
     if (this.isBlocked(userId)) {
       return;
@@ -182,7 +231,6 @@ class MemoryExtractor {
     if (isMentionMe) this.trackedUsers.add(userId);
     if (!this.trackedUsers.has(userId)) return;
 
-    const now = Date.now();
     this.prune(now);
 
     if (!this.pendingBuffers.has(userId)) {
@@ -202,13 +250,10 @@ class MemoryExtractor {
     buffer.nickName = nickName; // 保持最新昵称
     buffer.lastSeen = now;
 
-    // 昵称是单独传给抽取的，`[昵称]说：` 这截前缀 30 条加起来是白烧的 token
-    const { body } = splitSpeakerPrefix(message);
-    const text = body.trim();
-
     // 表情、复读、太短的话直接不收：抽不出东西，却要占一个触发名额。
     // 只看本人说的那句，引文是别人的话，不能拿别人的字数把「？？」放行
-    if (informativeLength(text) < MIN_INFORMATIVE_CHARS || text === buffer.lastText || !isSelfMemoryCandidate(text)) {
+    if (informativeLength(text) < MIN_INFORMATIVE_CHARS || text === buffer.lastText
+      || !isSelfMemoryCandidate(text) || this.isMeme(text)) {
       buffer.skipped += 1;
       return;
     }
@@ -235,7 +280,9 @@ class MemoryExtractor {
 
     // 攒下的窗口整块取走，只把最近的一批送去抽取：
     // 会退避到这一步说明这个人的记忆已经饱和，越靠后的消息越值钱，旧的丢掉不心疼
-    const window = buffer.messages.splice(0, buffer.messages.length);
+    // 收下时还不是梗的句子，可能后来被别人复读成了梗
+    const window = buffer.messages.splice(0, buffer.messages.length).filter((m) => !this.isMeme(m.text));
+    if (window.length === 0) return;
     const batch = window.slice(-EXTRACT_BATCH);
     buffer.nextExtractAt = now + this.cooldownMs();
     this.triggerExtract(userId, buffer.nickName, batch, window.length).catch(() => { });
@@ -296,7 +343,7 @@ class MemoryExtractor {
       ).all(userId, nickName) as { nick: string }[];
       const safeOps = ops.filter((op) => {
         if (op.op === 'DELETE') return true;
-        if ((op.confidence ?? 0.6) < 0.7 || !op.text) return false;
+        if ((op.confidence ?? 0.6) < 0.7 || !op.text || RELATIVE_TIME_RE.test(op.text)) return false;
         // 其他群友被写成句子主语时，不把整条事实归给当前用户。
         return !/^(?:他|她|对方|某人|群友)/.test(op.text)
           && !foreignNames.some(({ nick }) => nick.length >= 2 && op.text!.startsWith(nick));

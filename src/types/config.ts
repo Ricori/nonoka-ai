@@ -95,7 +95,7 @@ export interface BotConfig {
       enable?: boolean;
       /** 白名单群号，留空则所有开了 AI 回复的群都能画 */
       whiteGroupIds?: number[];
-      /** 每群每日出图上限，默认 5。出图要花钱，别不设上限 */
+      /** 每群每日出图上限，默认 5 */
       dailyLimit?: number;
       /** 同群两次出图之间的冷却秒数，默认 120 */
       cooldownSec?: number;
@@ -108,7 +108,7 @@ export interface BotConfig {
       enable?: boolean;
       /** 白名单群号，留空则所有开了 AI 回复的群都能搜 */
       whiteGroupIds?: number[];
-      /** 每群每日搜索上限，默认 20。上游免费额度是每月 1000 次，别不设上限 */
+      /** 每群每日搜索上限，默认 20。上游免费额度是每月 1000 次。 */
       dailyLimit?: number;
       /** 单次返回的结果条数，默认 5，上限 8 */
       count?: number;
