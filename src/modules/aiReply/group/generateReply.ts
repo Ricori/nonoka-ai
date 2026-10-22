@@ -7,7 +7,7 @@ import memoryStore from '../memory/store';
 import groupProfileStorage from '../storage/groupProfile';
 import { MEMORY_TOOLS, runMemoryTool } from '../memory/tools';
 import {
-  getDrawNotice, getImageTools, isDrawing, isImageGenEnabled, isImageTool, runImageTool,
+  getDrawNotice, getImageTools, isImageGenEnabled, isImageTool, runImageTool,
 } from '../imageGen/tools';
 import {
   SEARCH_TOOLS, isSearchEnabled, isSearchTool, runSearchTool,
@@ -19,15 +19,16 @@ import {
 } from '../format';
 
 /**
- * 按当前状态裁剪要下发的工具
+ * 要下发的工具集。只按群配置分，不许按这一轮的临时状态裁剪。
+ *
+ * 工具定义排在 system 前面，一变就连整段人设一起作废：实测主动插话抽掉 tools 那次，
+ * 人设 7916 token 原样重写一遍。「还在画」「没底图」这类临时状态全部由
+ * runImageTool / runSearchTool 兜底拒绝，它们每条出口都返回给模型看的理由
  */
-function buildTools(groupId: number, srcImgUrl?: string): ToolDef[] {
-  // 还在画的这一轮不给画图工具——不该排队画第二张
-  const canDraw = isImageGenEnabled(groupId) && !isDrawing(groupId);
+function buildTools(groupId: number): ToolDef[] {
   return [
     ...MEMORY_TOOLS,
-    // 没有底图时 edit_image 不下发，模型看不见就不会去改别人的图
-    ...(canDraw ? getImageTools(!!srcImgUrl) : []),
+    ...(isImageGenEnabled(groupId) ? getImageTools() : []),
     ...(isSearchEnabled(groupId) ? SEARCH_TOOLS : []),
   ];
 }
@@ -146,11 +147,12 @@ export async function generateGroupReply(
   const srcImgUrl = getSrcImgUrl(history);
 
   let toolCalls = 0;
-  // 0 轮（主动插话）走同一条路，只是一轮都不许调工具，服务端也就不会下发工具定义
+  // 0 轮（主动插话）走同一条路，只是一轮都不许调工具——工具定义照样下发，
+  // 服务端改用 tool_choice:none 挡住调用，这样缓存前缀跨「被动/主动」是同一条
   const aiReplyText = await getLLMReplyWithTools(
     messages,
     context,
-    buildTools(groupId, srcImgUrl),
+    buildTools(groupId),
     (name, input) => {
       toolCalls += 1;
       if (isImageTool(name)) return runImageTool(groupId, name, input, srcImgUrl);
