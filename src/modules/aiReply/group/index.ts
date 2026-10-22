@@ -6,7 +6,6 @@ import { getReplyMsgId, hasReply } from '@/utils/function';
 import { printLog } from '@/utils/print';
 import { getRecordCode } from '@/utils/msgCode';
 import { getTTSAudio } from '@/service/tts';
-import { translateText } from '@/service/llm';
 import messageStorage from '../storage/message';
 import memoryExtractor from '../memory/extract';
 import { isDrawing } from '../imageGen/tools';
@@ -171,11 +170,8 @@ class GroupAIReplyModule extends NonokaModule<GroupMessageData> {
       .trim();
     if (!message) return false;
 
-    const jpText = await translateText(message, 'jp');
-    if (!jpText) return false;
-
-    printLog(`[GroupAIReplyModule] Auto reply audio: ${jpText}`);
-    const base64 = await getTTSAudio(jpText);
+    printLog(`[GroupAIReplyModule] Auto reply audio: ${message}`);
+    const base64 = await getTTSAudio(message, { lang: 'zh' });
     if (!base64) return false;
 
     nnkbot.sendGroupMsg(groupId, getRecordCode(base64));

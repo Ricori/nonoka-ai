@@ -5,7 +5,6 @@ import { saveConfigToDisk } from '@/core/nnkConfig';
 import { createMsgFromTweetId } from '@/service/twitter/message';
 import { getRecordCode } from '@/utils/msgCode';
 import { getTTSAudio } from '@/service/tts';
-import { translateText } from '@/service/llm';
 import { printError } from '@/utils/print';
 import { isGroupManager } from '@/modules/common/permission';
 import { isVoiceEnabled, setVoiceEnabled } from '../aiReply/group/voiceState';
@@ -152,12 +151,11 @@ class GroupCommandModule extends NonokaModule<GroupMessageData, GroupCommand> {
     ctx.reply(`[NonokaSystem] ${minutes === 0 ? `已解除 ${userId} 的禁言` : `已禁言 ${userId} ${minutes} 分钟`}`);
   }
 
-  /** 文字转语音（非日文先翻译为日文） */
+  /** 文字转语音，带假名按日文念，否则按中文 */
   private async handleTTS(ctx: ModuleContext<GroupMessageData>, text: string) {
-    const jpText = /[぀-ヿ]/.test(text) ? text : await translateText(text, 'jp');
-    if (!jpText) return;
+    const lang = /[぀-ヿ]/.test(text) ? 'ja' : 'zh';
 
-    const base64 = await getTTSAudio(jpText);
+    const base64 = await getTTSAudio(text, { lang });
     ctx.reply(base64 ? getRecordCode(base64) : '[NonokaSystem] TTS failed.');
   }
 }
