@@ -100,8 +100,10 @@ export async function getLLMReplyWithTools(
     const data = await postReply({
       messages,
       context,
-      // 最后一轮抽掉 tools，既逼模型必须出文本
-      ...(canUseTools ? { tools } : {}),
+      // 最后一轮也照发 tools：工具定义排在 system 前面，抽掉就连整段人设一起全价重算。
+      // 逼模型出文本交给服务端的 tool_choice:none（allowTools:false）
+      tools,
+      allowTools: canUseTools,
       ...(rounds.length ? { toolRounds: rounds } : {}),
     }, canUseTools ? TOOL_ROUND_TIMEOUT : REPLY_TIMEOUT);
 

@@ -58,10 +58,8 @@
           "initiative": 0
         },
         "blackUserIds": [],
-        "extractThreshold": 30,
-        "extractCooldownMin": 240,
-        "topicDailyLimit": 40,
-        "topicLookbackDays": 45
+        "extractThreshold": 10,
+        "extractCooldownMin": 240
       },
       "imageGen": {
         "enable": false,

@@ -7,6 +7,7 @@ import {
   getImgs, getReplyMsgId, hasImage, hasReply,
 } from '@/utils/function';
 import { printError, printLog } from '@/utils/print';
+import { isGroupManager } from '@/modules/common/permission';
 import {
   deleteSentPicture, downloadImage, getKeywords, getRandomPicture, PICTURE_DIR, recordSentPicture, refreshKeywords,
 } from './functions';
@@ -114,11 +115,9 @@ class LocalPictureModule extends NonokaModule<GroupMessageData, LocalPicHit> {
 
   /** 处理 /删图 命令：群主/群管理员或 bot 管理员引用图片后删除 */
   private async handleDeletePicture(ctx: ModuleContext<GroupMessageData>) {
-    const { message, user_id: userId, sender } = ctx.data;
+    const { message, user_id: userId } = ctx.data;
 
-    const isGroupAdmin = sender.role === 'owner' || sender.role === 'admin';
-    const isBotAdmin = (nnkbot.config.admin || []).includes(userId);
-    if (!isGroupAdmin && !isBotAdmin) {
+    if (!isGroupManager(ctx.data)) {
       ctx.reply('只有管理员可以删图', { at: true });
       return;
     }

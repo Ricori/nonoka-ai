@@ -27,8 +27,8 @@ export interface ModuleContext<D = AnyMessageData> {
   data: D;
   /** 群消息是否@了bot（非群消息恒为 false） */
   isAtMe: boolean;
-  /** 回复本条消息的来源（自动区分群/私聊；at 为 true 时在群里@发送者） */
-  reply(msg: string, opts?: { at?: boolean; plainText?: boolean }): void;
+  /** 回复本条消息的来源（自动区分群/私聊；at 为 true 时在群里@发送者），成功返回 message_id */
+  reply(msg: string, opts?: { at?: boolean; plainText?: boolean }): Promise<number | undefined>;
 }
 
 /**

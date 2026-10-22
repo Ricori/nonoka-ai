@@ -142,11 +142,11 @@ data/                     运行期数据：SQLite 记忆库、聊天备份、�
 1. **落盘** —— 群消息实时追加写进 `data/memory/chat/{groupId}_{yyyymmdd}.txt` 纯文本，这是记忆系统唯一的事实来源。
 2. **增量导入**（[ingest.ts](src/modules/aiReply/memory/ingest.ts)）—— 仅把近 45 天的备份解析进 `chat_line`/`chat_fts`，按 group/day 记水位线，幂等；旧备份保留为冷历史，不重新导入。
 3. **分词**（[segment.ts](src/modules/aiReply/memory/segment.ts)）—— jieba + 群内人名/黑话自定义词典（不然专有名词会被拆成单字），TF-IDF 提关键词。
-4. **抽取**（[extract.ts](src/modules/aiReply/memory/extract.ts)）—— 每人跨群攒够 30 条消息调一次 LLM，产出 ADD/UPDATE/DELETE 操作。用户档案按 QQ 号全局共享；单群批次记录来源群，跨群混合批次不强行归到某个群。只跟踪 @ 过 bot 的用户。抽取要花钱，触发上有三道闸：`[表情]`/复读/太短的消息不计数、连续几轮学不到新东西就把阈值翻倍（最多 8 倍）、同一个人两次抽取之间有冷却（默认 4h，见 `aiReply.memory.extractThreshold` / `extractCooldownMin`）。
+4. **抽取**（[extract.ts](src/modules/aiReply/memory/extract.ts)）—— 每人跨群攒够 10 条本人陈述调一次 LLM，产出 ADD/UPDATE/DELETE 操作。用户档案按 QQ 号全局共享；单群批次记录来源群，跨群混合批次不强行归到某个群。只跟踪 @ 过 bot 的用户。抽取要花钱，触发上有三道闸：`[表情]`/复读/太短/≥3 人说过的同一句（群梗）不计数、连续几轮学不到新东西就把阈值翻倍（最多 8 倍）、同一个人两次抽取之间有冷却（默认 4h，见 `aiReply.memory.extractThreshold` / `extractCooldownMin`）。
 5. **存储**（[store.ts](src/modules/aiReply/memory/store.ts)）—— 非置顶可用记忆每人最多 14 条：6 条 trait、4 条 episode、各 2 条已确认 alias/relation。自动记忆 45 天未印证即失效；人工确认的内容不按时间失效，但非置顶仍受配额限制。置顶条目保留且不占自动配额。回复默认最多注入 4 条印象。
 6. **向量化**（[vector.ts](src/modules/aiReply/memory/vector.ts)）—— 单位化 Float32 向量，暴力余弦 Top-K（量级在千级，不值得上索引）；`embedQueue` 攒 20 条或 15 秒触发一次，不阻塞回复主链路。
-7. **检索**（[retrieve.ts](src/modules/aiReply/memory/retrieve.ts)）—— BM25 与向量余弦（相似度硬阈值 0.40）双路召回，RRF（k=60）融合。默认及最大聊天窗口均为 45 天；人物范围和有效性在 Top-K 前过滤。话题按完整词优先选证据，每话题最多 3 条；命中附同群同日的相邻上下文并标注说话人。具体事实查不到就返回空，仅人物概览允许档案兜底。
-8. **巩固**（[consolidate.ts](src/modules/aiReply/memory/consolidate.ts)，每天四轮）—— 导入 → 本地过滤纯占位符、附和和同一人的短距离复读 → LLM 生成 `topic` 摘要（每次最多 100 行、3 路并发）→ 补齐缺失向量 → 全用户跑一次淘汰。成功段独立落库，其他段失败或重启不再重切成功段。**`topic` 只在这一步产生。**
+7. **检索**（[retrieve.ts](src/modules/aiReply/memory/retrieve.ts)）—— BM25 与向量余弦双路召回，RRF（k=60）融合。相似度下限人物档案 0.55、聊天窗口 0.50（一个窗口混着多个话题，整体相似度被稀释），都过不了时再放行排名最前的 5 个弱候选。默认及最大聊天范围均为 45 天；人物范围和有效性在 Top-K 前过滤。同一个 `chat_window` 最多占 3 个名额（窗口有重叠，一行只算进它所在的第一个窗口）；命中附同群同日的相邻上下文并标注说话人。具体事实查不到就返回空，仅人物概览允许档案兜底。
+8. **巩固**（[consolidate.ts](src/modules/aiReply/memory/consolidate.ts)，每天四轮）—— 清理 → 导入 → 本地过滤纯占位符、附和和同一人的短距离复读 → 把每天的日志按 12 行一窗、步长 8 切成重叠的 `chat_window`（直接拿原文向量化，不调 chat 模型）→ 补齐缺失向量 → 全用户跑一次淘汰。过去的日子切完就推水位不再重读；今天只切满员窗口，每轮重扫一遍。**`chat_window` 只在这一步产生。**
 9. **工具化**（[tools.ts](src/modules/aiReply/memory/tools.ts)）—— 包装成 `recall_memory` / `recall_chat` 两个 LLM 工具，模型给的"关于谁"经 `aliasIndex.resolve()` 消解成 userId，任何异常都不抛出（保证工具调用链不断）。
 
 <details>
@@ -156,33 +156,26 @@ data/                     运行期数据：SQLite 记忆库、聊天备份、�
 | --- | --- |
 | `chat_line` + `chat_fts`（FTS5） | 原始逐行聊天记录，按 `group_id+date_key+seq` 去重；`chat_fts` 是分词后的全文检索镜像 |
 | `memory` + `memory_fts` | 跨群共享的结构化用户档案：`scope`/`owner_id`/`kind`（trait / episode / relation / alias）/ `confidence` / `hits` / `pinned` / `verified`；`group_id` 只记录来源群，软删除走 `superseded_by`，未确认的身份条目保留但隔离 |
-| `topic` | LLM 生成的一句话摘要，覆盖一段 `chat_line` 范围（`line_from`–`line_to`），是语义检索的最小单元 |
-| `embedding` | `memory` / `topic` 行对应的向量（Float32Array BLOB） |
+| `memory_evidence_batch` + `memory_evidence` | 一次抽取送进 LLM 的原始消息（`messages` / `message_ids` / `group_ids` 都是 JSON 数组）与它产出的记忆之间的多对多链接，只追加不修改，供档案溯源；记忆被物理删除时链接一并删，不再被任何记忆引用的批次也跟着删 |
+| `chat_window` | 按 12 行一窗、步长 8 切出的重叠原文片段，覆盖一段 `chat_line` 范围（`line_from`–`line_to`），是语义检索的最小单元；`text` 是剥掉昵称、每行截 100 字的正文 |
+| `embedding` | `memory` / `chat_window` 行对应的向量（`ref_kind` 为 `memory` / `window`，Float32Array BLOB） |
 | `group_user_profile` | `(group_id, user_id)` 对应的当前群名片，回复时优先使用当前群的称呼 |
+| `consolidation_run` | 每轮定时巩固的起止时间、状态和前后积压（`pending_*` 是缺向量的窗口 + 记忆数，`oldest_pending_date` 是最早一个缺向量窗口的日期），只给管理面板看 |
 | `meta` | schema 版本、增量导入水位线、词典签名等 |
 
 </details>
 
 > 改记忆相关 prompt 或检索逻辑后，先用真实语料本地跑 `yarn memory:probe` / `yarn memory:eval` 验证，不要凭感觉改。
 
-切话题费用由 `botConfig.aiReply.memory` 下两个可选配置控制：
-
-- `topicDailyLimit`：默认 **40**，所有群、定时任务和手动脚本共用每天的请求上限，按 UTC 日期重置；失败请求也扣额度，重启不重置，`0` 关闭切话题。这是调用次数预算，不是货币或 token 预算。
-- `topicLookbackDays`：默认 **45**，只给热窗口内尚未处理的聊天生成新话题；可缩短，`0` 或大于 45 都不会突破热历史边界。处理近期日期后水位会前移，更早且未处理的日期不会自动补切。
-
-请求失败不立即重试，留待下一轮；并发的成功段照常保存。未完成的一天将分段原文 ID 和完成状态保存到 `meta`，兼容旧 v2 断点；短期租约防止手动与定时任务同时处理同一段，进程异常退出后最多等待 10 分钟即可接手。请求已发出但结果尚未持久化时崩溃，仍可能需要重调；服务端未提供幂等键，不能保证这类情况零重复计费。
-
-`yarn memory:topic-cost` 用只读连接对近 45 天真实语料比较新旧过滤的请求数和正文字符数，不调用模型；`DAYS` 可缩短范围。它不评估摘要质量，字符数也不是计费 token 数。`yarn test:topic` 用临时库验证预算、并发失败、旧断点迁移和重启续跑，不调用模型。
-
-手动巩固默认同样遵守上述预算。可通过 `DAYS`、`DAILY_LIMIT`、`CONCURRENCY` 覆盖本次范围、当天总上限和并发；`DRY=1 yarn memory:consolidate` 是只读预览，不再修改水位。耗尽预算、遇到失败或无进展时脚本停止，避免一轮轮立即重试。以上额度仅针对 `/llm/topic`，不包含独立的 embedding 和人物记忆抽取费用。
+手动巩固：`DRY=1 yarn memory:consolidate` 只读预览积压，不加 `DRY` 才真正导入、切窗口、补向量。这一步不调 chat 模型，只花 embedding。
 
 **人物归属与历史分层：** 自动抽取只发送明确的第一人称本人陈述，不附带别人的引文；问句、转述和第三人称主体不用于建立档案，非删除操作置信度至少 0.7。`alias` / `relation` 只允许人工维护，模型不能增删改，也不能通过把类型改成 trait 绕过。昵称识别仍直接使用近 45 天消息绑定的账号和昵称。工具遇到歧义称呼时不混合多人的档案。
 
 v8 迁移把历史未知来源的 alias/relation 隔离，置顶和明确标记“管理面板”的来源视为已确认。管理页显示“未确认，已隔离”，核对原话后点“确认并保存”恢复；改名或删除会立即重建别名缓存。旧人物向量无法验证对应的文本版本，迁移时一次性失效；只为收紧后仍可用的条目分批补齐（每轮最多 100 条）。期间文字检索和档案注入可用。以后文本更新立即摘掉旧向量，异步返回时再次比较原文，避免旧结果写回。
 
-启动和定时巩固会清理超过 45 天的 `chat_line`、FTS、topic、topic 向量及旧的未完成话题计划；热向量缓存也只装载可用数据，补齐任务不会复活冷历史。冷层使用原有 `data/memory/chat/*.txt` 备份。`yarn memory:maintain` 只读预览；加 `--apply` 会先在 `data/memory/backups/` 保存 SQLite 一致性备份，再执行迁移、清理、FTS 合并和 VACUUM。备份另占磁盘空间，热库缩小不代表备份总量也缩小。
+启动和定时巩固会清理超过 45 天的 `chat_line`、FTS、`chat_window` 及其向量，并删掉指向已消失行的孤儿向量；热向量缓存也只装载可用数据，补齐任务不会复活冷历史。冷层使用原有 `data/memory/chat/*.txt` 备份。`yarn memory:maintain` 只读预览；加 `--apply` 会先在 `data/memory/backups/` 保存 SQLite 一致性备份，再执行迁移、清理、FTS 合并和 VACUUM。备份另占磁盘空间，热库缩小不代表备份总量也缩小。
 
-`yarn test:memory-policy` 验证 14 条配额、身份隔离/确认、向量失效和历史不复活。`yarn memory:eval -- 0 --stored-topics` 从真实热历史抽样 30 个话题，用已有向量离线检查来源原文能否回溯及群/时间边界，不发模型请求；这是已存话题回放，不替代独立标注的相关性评测。
+`yarn test` 用临时库验证老库拒开、备份导入、跨群隔离、向量失效、身份防伪和重排回退，不调用模型。
 
 ## 部署
 
@@ -200,7 +193,7 @@ yarn lint-fix             # 自动修复
 yarn memory:consolidate   # 手动触发记忆巩固
 yarn memory:probe         # 记忆召回探测
 yarn memory:eval          # 记忆召回评测（真实语料，非合成数据）
-yarn test                 # 跑 test/ 下的测试脚本
+yarn test                 # 关键用例：记忆（test/memory.ts）+ 回复（test/reply.ts）
 ```
 
 ## 参考
@@ -210,7 +203,7 @@ yarn test                 # 跑 test/ 下的测试脚本
 
 ### AI 回复
 
-- **群聊**（[src/modules/aiReply/group](src/modules/aiReply/group)，事件 `group`）：每条消息先入库（`messageStorage` + `aliasIndex`），再决定是否回复——被 `@` 必回，否则交给 `trigger.ts` 的概率状态机。同群回复做了 3.5s 防抖（`sessionTimers`）+ 并发锁（`processingLocks`）避免刷屏时连续触发。`generateReply.ts` 组装历史 + 记忆上下文 + 系统提示，按场景裁剪工具集（记忆工具常驻，生图/搜图按开关启用），控制工具调用轮数：被 `@` 1 轮，插话 0 轮（插话不该拖慢群里的节奏）。`voiceState.ts` 是按群维护的 TTS 开关。
+- **群聊**（[src/modules/aiReply/group](src/modules/aiReply/group)，事件 `group`）：每条消息先入库（`messageStorage` + `aliasIndex`），再决定是否回复——被 `@` 必回，否则交给 `trigger.ts`：关键词与 @ 衰减算出每小时的插话预算，再按时机分（群友正在找 bot、纯表情、在回复别人）把概率挪到更容易接上话的消息，超预算就收紧；离线回放见 `scripts/initiativeReplay.ts`。同群回复做了 3.5s 防抖（`sessionTimers`）+ 并发锁（`processingLocks`）避免刷屏时连续触发。`generateReply.ts` 组装历史 + 记忆上下文 + 系统提示，按场景裁剪工具集（记忆工具常驻，生图/搜图按开关启用），控制工具调用轮数：被 `@` 1 轮，插话 0 轮（插话不该拖慢群里的节奏）。`voiceState.ts` 是按群维护的 TTS 开关。
 - **私聊**（[src/modules/aiReply/private](src/modules/aiReply/private)，事件 `private`）：无防抖、无触发概率、无工具循环，收到即格式化 → 追加历史 → `getLLMReply` → 分段发送，是群聊流程的简化版。
 
 ### 格式化与发送
@@ -270,7 +263,7 @@ yarn test                 # 跑 test/ 下的测试脚本
 
 - `bilibili.ts`：每 180s 轮询配置的 UP 主最新动态（错峰 2s 一个避免限流），有更新则推送到映射的群。
 - `clean.ts`：每 3 天清空内存中的会话历史缓存（不影响持久化的 SQLite 记忆库）。
-- `memoryConsolidate.ts`：每天 0/6/12/18 点（Asia/Shanghai）对所有 `initiativeList` 群跑记忆巩固（`preventOverrun` 防重入），四轮共用每日 topic 预算。
+- `memoryConsolidate.ts`：每天 0/6/12/18 点（Asia/Shanghai）对所有 `initiativeList` 群跑记忆巩固（`preventOverrun` 防重入）。切窗口要花 embedding，所以只做这些群；不花钱的增量导入对所有群都跑。
 - `twitter.ts`：10s 一次 tick，按服务端算出的 `nextRunAt` 窗口实际拉取；单用户连续失败则跳过，累计失败一定次数则自动关闭任务并通知管理员。
 - `youtube.ts`：每 120s 检查直播状态，每个频道首次检查不推送（避免启动时误报已在直播的场次），按 `videoId` 去重。
 

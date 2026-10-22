@@ -6,7 +6,6 @@ import { getReplyMsgId, hasReply } from '@/utils/function';
 import { printLog } from '@/utils/print';
 import { getRecordCode } from '@/utils/msgCode';
 import { getTTSAudio } from '@/service/tts';
-import { translateText } from '@/service/llm';
 import messageStorage from '../storage/message';
 import memoryExtractor from '../memory/extract';
 import { isDrawing } from '../imageGen/tools';
@@ -95,11 +94,11 @@ class GroupAIReplyModule extends NonokaModule<GroupMessageData> {
       // 被 @ 的这条不掷骰：掷中会把这次回复降级成主动插话，而主动插话不下发工具
       // 判定放在掷骰之前，免得白白消耗 trigger 内部的冷却与计数状态
       if (!formattedMessage.isMentionMe && !isDrawing(groupId)) {
-        const chance = this.trigger.rollInitiative(groupId, formattedMessage.message);
-        if (chance !== null) {
+        const hit = this.trigger.rollInitiative(groupId, messageStorage.getGroupChatConversations(groupId));
+        if (hit !== null) {
           shouldReply = true;
           isInitiativeReply = true;
-          initiativeChance = chance;
+          initiativeChance = hit.chance;
         }
       }
 
@@ -171,11 +170,8 @@ class GroupAIReplyModule extends NonokaModule<GroupMessageData> {
       .trim();
     if (!message) return false;
 
-    const jpText = await translateText(message, 'jp');
-    if (!jpText) return false;
-
-    printLog(`[GroupAIReplyModule] Auto reply audio: ${jpText}`);
-    const base64 = await getTTSAudio(jpText);
+    printLog(`[GroupAIReplyModule] Auto reply audio: ${message}`);
+    const base64 = await getTTSAudio(message, { lang: 'zh' });
     if (!base64) return false;
 
     nnkbot.sendGroupMsg(groupId, getRecordCode(base64));

@@ -60,7 +60,7 @@ export class NonokaWebsocket {
     this.eventFunction = { ...this.eventFunction, ...eventFC };
   }
 
-  call(method: string, params: Record<string, any>) {
+  call(method: string, params: Record<string, any>, timeout = NonokaWebsocket.CALL_TIMEOUT) {
     return new Promise((resolve: (c: WSActionRes) => void, reject: (e: Error) => void) => {
       if (!this.apiWSConnection?.connected) {
         reject(new Error('apiWs has not been initialized.'));
@@ -71,7 +71,7 @@ export class NonokaWebsocket {
       const timer = setTimeout(() => {
         this.responseHandlers.delete(reqid);
         reject(new Error(`WS call timeout: ${method}`));
-      }, NonokaWebsocket.CALL_TIMEOUT);
+      }, timeout);
       const onSuccess = (ctxt: WSActionRes) => {
         clearTimeout(timer);
         this.responseHandlers.delete(reqid);
