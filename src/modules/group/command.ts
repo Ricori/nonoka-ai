@@ -4,7 +4,7 @@ import { GroupMessageData } from '@/types/event';
 import { saveConfigToDisk } from '@/core/nnkConfig';
 import { createMsgFromTweetId } from '@/service/twitter/message';
 import { getRecordCode } from '@/utils/msgCode';
-import { getTTSAudio } from '@/service/tts';
+import { sendSegmentedVoice, TTS_MAX_TOTAL_LENGTH } from '@/service/tts';
 import { printError } from '@/utils/print';
 import { isGroupManager } from '@/modules/common/permission';
 import { isVoiceEnabled, setVoiceEnabled } from '../aiReply/group/voiceState';
@@ -151,12 +151,21 @@ class GroupCommandModule extends NonokaModule<GroupMessageData, GroupCommand> {
     ctx.reply(`[NonokaSystem] ${minutes === 0 ? `已解除 ${userId} 的禁言` : `已禁言 ${userId} ${minutes} 分钟`}`);
   }
 
-  /** 文字转语音，带假名按日文念，否则按中文 */
+  /** 文字转语音，带假名按日文念，否则按中文；超过单次 300 字按标点切块发多条 */
   private async handleTTS(ctx: ModuleContext<GroupMessageData>, text: string) {
     const lang = /[぀-ヿ]/.test(text) ? 'ja' : 'zh';
 
-    const base64 = await getTTSAudio(text, { lang });
-    ctx.reply(base64 ? getRecordCode(base64) : '[NonokaSystem] TTS failed.');
+    if (text.trim().length > TTS_MAX_TOTAL_LENGTH) {
+      ctx.reply(`[NonokaSystem] 文本太长，最多 ${TTS_MAX_TOTAL_LENGTH} 字`);
+      return;
+    }
+
+    const { sent, rest } = await sendSegmentedVoice(text, (audio) => ctx.reply(getRecordCode(audio)), { lang });
+    if (!sent) {
+      ctx.reply('[NonokaSystem] TTS failed.');
+    } else if (rest) {
+      ctx.reply(`[NonokaSystem] 这段没合成出来: ${rest}`);
+    }
   }
 }
 

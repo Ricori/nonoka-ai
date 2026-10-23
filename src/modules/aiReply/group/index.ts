@@ -5,7 +5,7 @@ import { BOT_NAME } from '@/constants';
 import { getReplyMsgId, hasReply } from '@/utils/function';
 import { printLog } from '@/utils/print';
 import { getRecordCode } from '@/utils/msgCode';
-import { getTTSAudio } from '@/service/tts';
+import { sendSegmentedVoice } from '@/service/tts';
 import messageStorage from '../storage/message';
 import memoryExtractor from '../memory/extract';
 import { isDrawing } from '../imageGen/tools';
@@ -161,7 +161,7 @@ class GroupAIReplyModule extends NonokaModule<GroupMessageData> {
     }
   }
 
-  /** 尝试把回复转成语音发送，任一环节失败都返回 false 由调用方回退到文字 */
+  /** 尝试把回复转成语音发送，一条都没合成出来就返回 false 由调用方回退到文字 */
   private async trySendVoice(groupId: number, aiReplyText: string) {
     // 去掉表情标签，分段符换成空格以免相邻两段粘连
     const message = aiReplyText
@@ -171,10 +171,16 @@ class GroupAIReplyModule extends NonokaModule<GroupMessageData> {
     if (!message) return false;
 
     printLog(`[GroupAIReplyModule] Auto reply audio: ${message}`);
-    const base64 = await getTTSAudio(message, { lang: 'zh' });
-    if (!base64) return false;
+    // 超过单次 300 字的回复在这里切块，每块合成完立刻发，不等整段做完
+    const { sent, rest } = await sendSegmentedVoice(
+      message,
+      (audio) => nnkbot.sendGroupMsg(groupId, getRecordCode(audio)),
+      { lang: 'zh' },
+    );
+    if (!sent) return false;
 
-    nnkbot.sendGroupMsg(groupId, getRecordCode(base64));
+    // 合成到一半断了，前面的语音已经发出去，剩下的补文字免得回复缺一截
+    if (rest) await nnkbot.sendGroupMsg(groupId, rest);
     return true;
   }
 }
