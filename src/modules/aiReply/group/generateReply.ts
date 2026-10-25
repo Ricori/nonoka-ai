@@ -1,4 +1,4 @@
-import { getLLMReplyWithTools, type ToolDef } from '@/service/llm';
+import { getLLMReplyWithTools, PROMPT_LAYOUT, type ToolDef } from '@/service/llm';
 import nnkbot from '@/core/nnkBot';
 import { printLog } from '@/utils/print';
 import type { FormattedMessage } from '@/types/message';
@@ -7,7 +7,7 @@ import memoryStore from '../memory/store';
 import groupProfileStorage from '../storage/groupProfile';
 import { MEMORY_TOOLS, runMemoryTool } from '../memory/tools';
 import {
-  getDrawNotice, getImageTools, isImageGenEnabled, isImageTool, runImageTool,
+  getDrawNotice, getImageTools, isDrawing, isImageGenEnabled, isImageTool, runImageTool,
 } from '../imageGen/tools';
 import {
   SEARCH_TOOLS, isSearchEnabled, isSearchTool, runSearchTool,
@@ -19,16 +19,20 @@ import {
 } from '../format';
 
 /**
- * 要下发的工具集。只按群配置分，不许按这一轮的临时状态裁剪。
+ * 要下发的工具集。
  *
- * 工具定义排在 system 前面，一变就连整段人设一起作废：实测主动插话抽掉 tools 那次，
- * 人设 7916 token 原样重写一遍。「还在画」「没底图」这类临时状态全部由
- * runImageTool / runSearchTool 兜底拒绝，它们每条出口都返回给模型看的理由
+ * lean 编排按「还在画」「没底图」这类单轮状态裁剪，少发的 token 直接省下来；
+ * cache 编排只按群配置分，因为工具定义排在 system 前面、一变就连整段人设一起作废
+ * （实测主动插话抽掉 tools 那次，人设 7916 token 原样重写一遍）。
+ * 裁剪不下发时，临时状态由 runImageTool / runSearchTool 兜底拒绝，每条出口都返回给模型看的理由
  */
-function buildTools(groupId: number): ToolDef[] {
+function buildTools(groupId: number, srcImgUrl?: string): ToolDef[] {
+  const lean = PROMPT_LAYOUT === 'lean';
+  // 还在画的这一轮不给画图工具——不该排队画第二张
+  const canDraw = isImageGenEnabled(groupId) && !(lean && isDrawing(groupId));
   return [
     ...MEMORY_TOOLS,
-    ...(isImageGenEnabled(groupId) ? getImageTools() : []),
+    ...(canDraw ? getImageTools(!lean || !!srcImgUrl) : []),
     ...(isSearchEnabled(groupId) ? SEARCH_TOOLS : []),
   ];
 }
@@ -147,12 +151,12 @@ export async function generateGroupReply(
   const srcImgUrl = getSrcImgUrl(history);
 
   let toolCalls = 0;
-  // 0 轮（主动插话）走同一条路，只是一轮都不许调工具——工具定义照样下发，
-  // 服务端改用 tool_choice:none 挡住调用，这样缓存前缀跨「被动/主动」是同一条
+  // 0 轮（主动插话）走同一条路，只是一轮都不许调工具：lean 编排下服务端也就不下发工具定义，
+  // cache 编排下照发、由服务端 tool_choice:none 挡住，这样缓存前缀跨「被动/主动」是同一条
   const aiReplyText = await getLLMReplyWithTools(
     messages,
     context,
-    buildTools(groupId),
+    buildTools(groupId, srcImgUrl),
     (name, input) => {
       toolCalls += 1;
       if (isImageTool(name)) return runImageTool(groupId, name, input, srcImgUrl);

@@ -83,13 +83,14 @@ const EDIT_IMAGE_TOOL: ToolDef = {
 };
 
 /**
- * 两个工具恒定一起下发，不按有没有底图裁剪。
+ * 没底图时不下发 edit_image，模型看不见就不会去改别人的图。
  *
- * 工具定义排在 system 前面，少下发一个就连整段人设一起全价重算（实测抽掉 tools 要重写 7916 token）。
- * 没底图时模型硬调 edit_image 由 runImageTool 兜底拒绝，代价只是一次工具轮
+ * hasSrcImg 恒传 true 即两个工具恒定一起下发（cache 编排要的）：工具定义排在 system 前面，
+ * 少下发一个就连整段人设一起全价重算（实测抽掉 tools 要重写 7916 token），
+ * 代价是没底图时模型硬调 edit_image，由 runImageTool 兜底拒绝、多花一次工具轮
  */
-export function getImageTools(): ToolDef[] {
-  return [DRAW_IMAGE_TOOL, EDIT_IMAGE_TOOL];
+export function getImageTools(hasSrcImg: boolean): ToolDef[] {
+  return hasSrcImg ? [DRAW_IMAGE_TOOL, EDIT_IMAGE_TOOL] : [DRAW_IMAGE_TOOL];
 }
 
 /** 这个工具名是不是画图工具（generateReply 里分派用） */

@@ -7,6 +7,13 @@ import type { FormattedMessage } from '@/types/message';
  * LLM 这里只负责把请求转发给 nonoka API 服务
  */
 
+/**
+ * prompt 编排方式，必须和服务端 nonoka-service-cf 的 PROMPT_LAYOUT 一致。
+ * - 'lean'：按单轮状态裁剪工具、末轮抽掉 tools，整体下发的 token 最少
+ * - 'cache'：工具集恒定下发，末轮靠服务端 tool_choice:none 逼出文本，保住缓存前缀
+ */
+export const PROMPT_LAYOUT: 'lean' | 'cache' = 'lean';
+
 // 服务端可能先识图再调用回复模型，单次请求最多等待 100s
 const REPLY_TIMEOUT = 100000;
 // 要比服务端重排的上游超时（40s）长，否则服务端还在等模型时 bot 先放弃
@@ -100,9 +107,9 @@ export async function getLLMReplyWithTools(
     const data = await postReply({
       messages,
       context,
-      // 最后一轮也照发 tools：工具定义排在 system 前面，抽掉就连整段人设一起全价重算。
-      // 逼模型出文本交给服务端的 tool_choice:none（allowTools:false）
-      tools,
+      // cache 编排最后一轮也照发：工具定义排在 system 前面，抽掉就连整段人设一起全价重算，
+      // 逼模型出文本交给服务端的 tool_choice:none；lean 编排则直接抽掉，省下工具定义那 1900
+      ...(canUseTools || PROMPT_LAYOUT === 'cache' ? { tools } : {}),
       allowTools: canUseTools,
       ...(rounds.length ? { toolRounds: rounds } : {}),
     }, canUseTools ? TOOL_ROUND_TIMEOUT : REPLY_TIMEOUT);
