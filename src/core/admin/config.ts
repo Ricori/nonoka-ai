@@ -19,7 +19,7 @@ function validateConfig(v: unknown): v is NonokaConfig {
   if (!isPlainObject(wsConfig) || typeof wsConfig.host !== 'string' || typeof wsConfig.port !== 'number') return false;
   if (!isPlainObject(botConfig)) return false;
   const requiredKeys = [
-    'admin', 'autoAddFriend', 'nonokaService', 'apiKeys', 'repeater', 'aiReply',
+    'admin', 'nonokaService', 'apiKeys', 'aiReply',
   ];
   return requiredKeys.every((k) => k in botConfig);
 }
@@ -30,17 +30,11 @@ function readConfigFile(): NonokaConfig {
 
 /**
  * 简化版管理面板仅暴露和修改 AI 对话相关配置；
- * wsConfig、nonokaService、apiKeys 以及已拆分到辅助 bot 的推送/涩图配置均保持磁盘原值
+ * wsConfig、nonokaService、apiKeys 均不允许通过面板读取或修改
  */
 function redactConfig(config: NonokaConfig) {
-  const {
-    admin, autoAddFriend, repeater, aiReply,
-  } = config.botConfig;
-  return {
-    botConfig: {
-      admin, autoAddFriend, repeater, aiReply,
-    },
-  };
+  const { admin, aiReply } = config.botConfig;
+  return { botConfig: { admin, aiReply } };
 }
 
 function writeConfigFile(config: NonokaConfig) {
@@ -108,14 +102,7 @@ const PAGE = `<!doctype html>
   <section>
     <h2>基础设置</h2>
     <div class="row"><label>管理员 QQ</label><input type="text" id="admin" placeholder="用逗号分隔，例如 123,456"></div>
-    <div class="row"><label>自动同意加好友</label><input type="checkbox" id="autoAddFriend"></div>
     <div class="row"><span class="hint">Nonoka 服务地址 / 密钥不通过本面板读取或修改，请直接编辑 config.json</span></div>
-  </section>
-
-  <section>
-    <h2>复读机</h2>
-    <div class="row"><label>启用</label><input type="checkbox" id="repeaterEnable"></div>
-    <div class="row"><label>黑名单群号</label><input type="text" id="repeaterBlackList" placeholder="用逗号分隔"></div>
   </section>
 
   <section>
@@ -123,10 +110,11 @@ const PAGE = `<!doctype html>
     <div class="row"><label>启用</label><input type="checkbox" id="aiEnable"></div>
     <div class="row"><label>黑名单群号</label><input type="text" id="aiBlackList" placeholder="用逗号分隔"></div>
     <div class="row"><label>主动发言群号</label><input type="text" id="aiInitiativeList" placeholder="用逗号分隔"></div>
+    <div class="row"><label>语音回复群号</label><input type="text" id="aiVoiceList" placeholder="用逗号分隔，开启后优先发 TTS 语音"></div>
   </section>
 
   <section>
-    <span class="hint">推送订阅与涩图配置已迁移至 nonoka-assistant-bot 面板；WebSocket / 密钥设置请直接编辑 config.json</span>
+    <span class="hint">推送订阅、复读机、涩图与群命令已迁移至 nonoka-assistant-bot；WebSocket / 密钥设置请直接编辑 config.json</span>
   </section>
 </main>
 <script>
@@ -156,29 +144,22 @@ const PAGE = `<!doctype html>
   function fill(cfg) {
     const bc = cfg.botConfig;
     document.getElementById('admin').value = (bc.admin || []).join(',');
-    document.getElementById('autoAddFriend').checked = !!bc.autoAddFriend;
-
-    document.getElementById('repeaterEnable').checked = !!bc.repeater.enable;
-    document.getElementById('repeaterBlackList').value = (bc.repeater.blackList || []).join(',');
 
     document.getElementById('aiEnable').checked = !!bc.aiReply.enable;
     document.getElementById('aiBlackList').value = (bc.aiReply.blackList || []).join(',');
     document.getElementById('aiInitiativeList').value = (bc.aiReply.initiativeList || []).join(',');
+    document.getElementById('aiVoiceList').value = (bc.aiReply.voiceList || []).join(',');
   }
 
   function collect() {
     return {
       botConfig: {
         admin: parseNumList(document.getElementById('admin').value),
-        autoAddFriend: document.getElementById('autoAddFriend').checked,
-        repeater: {
-          enable: document.getElementById('repeaterEnable').checked,
-          blackList: parseNumList(document.getElementById('repeaterBlackList').value),
-        },
         aiReply: {
           enable: document.getElementById('aiEnable').checked,
           blackList: parseNumList(document.getElementById('aiBlackList').value),
           initiativeList: parseNumList(document.getElementById('aiInitiativeList').value),
+          voiceList: parseNumList(document.getElementById('aiVoiceList').value),
         },
       },
     };

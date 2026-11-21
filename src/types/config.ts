@@ -8,8 +8,6 @@ export interface WSConfig {
 export interface BotConfig {
   /** 管理员qq数组 */
   admin: number[];
-  /** 是否同意自动添加好友 */
-  autoAddFriend: boolean;
   /** nonoka API服务 */
   nonokaService: {
     /** API服务地址 */
@@ -29,13 +27,6 @@ export interface BotConfig {
       model: string;
     };
   };
-  /** 复读机功能 */
-  repeater: {
-    /** 打开复读机 */
-    enable: boolean;
-    /** 黑名单群号 */
-    blackList: number[];
-  };
   /** AI回复 */
   aiReply: {
     /** 是否开启AI回复 */
@@ -44,6 +35,8 @@ export interface BotConfig {
     blackList: number[];
     /** 主动发起对话的群名单 */
     initiativeList: number[];
+    /** 开启语音回复（TTS）的群名单 */
+    voiceList?: number[];
     /** 记忆系统。整块可省略，省略时按代码里的默认值走 */
     memory?: {
       /** 每次回复允许模型调几轮召回工具 */

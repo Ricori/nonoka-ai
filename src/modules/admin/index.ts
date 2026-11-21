@@ -1,7 +1,7 @@
+import nnkbot from '@/core/nnkBot';
 import { EventKind, ModuleContext, NonokaModule } from '@/core/nnkModule';
 import { PrivateMessageData } from '@/types/event';
 import messageStorage from '@/modules/aiReply/storage/message';
-import { isBotAdmin } from '@/modules/common/permission';
 
 const HELP_TEXT = [
   '=== Nonoka Admin Commands ===',
@@ -24,7 +24,7 @@ class AdminModule extends NonokaModule<PrivateMessageData, AdminCommand> {
 
   match(ctx: ModuleContext<PrivateMessageData>): AdminCommand | false {
     const { user_id: userId, message } = ctx.data;
-    if (!isBotAdmin(userId)) return false;
+    if (!nnkbot.config.admin.includes(userId)) return false;
 
     if (message === '/help') return { cmd: 'help' };
     if (message === '/clean-memory') return { cmd: 'cleanMemory' };

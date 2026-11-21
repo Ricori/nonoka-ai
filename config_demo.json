@@ -7,7 +7,6 @@
     "admin": [
       515302066
     ],
-    "autoAddFriend": false,
     "nonokaService": {
       "baseUrl": "",
       "apiKey": ""
@@ -19,14 +18,11 @@
         "model": "gpt-image-2"
       }
     },
-    "repeater": {
-      "enable": true,
-      "blackList": []
-    },
     "aiReply": {
       "enable": true,
       "blackList": [],
       "initiativeList": [],
+      "voiceList": [],
       "memory": {
         "toolRounds": {
           "mention": 1,

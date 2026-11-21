@@ -14,7 +14,6 @@ import { formatMessage } from '../format';
 import { sendSegmentedReply } from '../replySender';
 import { GroupReplyTrigger } from './trigger';
 import { generateGroupReply } from './generateReply';
-import { isVoiceEnabled } from './voiceState';
 
 class GroupAIReplyModule extends NonokaModule<GroupMessageData> {
   readonly name = 'GroupAIReplyModule';
@@ -149,7 +148,7 @@ class GroupAIReplyModule extends NonokaModule<GroupMessageData> {
 
       if (aiReplyText) {
         // 开启语音回复的群优先发语音，成功后不再发文字，避免同样内容重复出现
-        if (isVoiceEnabled(groupId) && await this.trySendVoice(groupId, aiReplyText)) {
+        if (nnkbot.config.aiReply.voiceList?.includes(groupId) && await this.trySendVoice(groupId, aiReplyText)) {
           return;
         }
 

@@ -3,24 +3,15 @@ import nnkSchedule from '@/core/nnkSchedule';
 import { NonokaAdmin } from '@/core/admin';
 import SystemCleanupJob from '@/tasks/clean';
 import MemoryConsolidateJob from '@/tasks/memoryConsolidate';
-import RequestFriendModule from '@/modules/request/requestFriend';
 import AdminModule from '@/modules/admin';
 import PrivateAIReplyModule from '@/modules/aiReply/private';
 import GroupAIReplyModule from '@/modules/aiReply/group';
-import RepeaterModule from '@/modules/group/repeater';
-import GroupCommandModule from '@/modules/group/command';
 import { ingestOnStartup } from '@/modules/aiReply/memory/ingest';
 
 // 加载模块
 nnkbot.loadModules([
-  // 好友请求处理 (request)
-  RequestFriendModule,
   // 管理员命令 (private)
   AdminModule,
-  // 群命令 (group)
-  GroupCommandModule,
-  // 复读机 (group:plain)
-  RepeaterModule,
   // 私聊 AI 回复 (private)
   PrivateAIReplyModule,
   // 群聊 AI 回复 (group)

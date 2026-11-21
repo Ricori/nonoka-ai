@@ -19,9 +19,7 @@
 
 **🗣️ 知道你们在说谁。** 群友互相叫外号，模型是分不清的。`nameMatch` 做归一化模糊匹配（去 emoji、零宽字符、尾部语气词，还对拉丁字符做边界检查，免得 `azu` 命中 `azusa` 内部），`aliasIndex` 扫 180 天历史昵称建索引，`mention` 会把对话里顺带提到的人的档案也塞给模型。
 
-**🔁 还有个复读机。** 连续相同消息达到随机阈值会自动复读。
-
-**🗣️ 语音与面板。** 支持 TTS 语音回复与内嵌管理面板热改配置/维护记忆库（推送、搜图、图库、涩图等功能类已拆分至独立的 QQ 官方机器人 `nonoka-assistant-bot`）。
+**🗣️ 语音与面板。** 支持 TTS 语音回复与内嵌管理面板热改配置/维护记忆库（推送、搜图、图库、涩图、复读机、群命令等功能类已全部拆分至独立的 QQ 官方机器人 `nonoka-assistant-bot`）。
 
 ## 快速开始
 
@@ -111,8 +109,7 @@ export default new MyModule();
         ▼
 ┌───────────────────────────────────────────────┐
 │  moduleList（按 src/index.ts 注册顺序遍历）     │
-│  好友请求 → 管理员命令 → 群命令 → 复读机         │
-│  → 私聊 AI → 群聊 AI                           │
+│  管理员命令 → 私聊 AI → 群聊 AI                 │
 │  每个模块：match(ctx) 命中判定 → run(ctx, hit)  │
 │  run 返回 'continue' 才继续往下传，否则链路终止  │
 └───────────────────────────────────────────────┘
@@ -125,7 +122,7 @@ export default new MyModule();
 ```
 src/index.ts              启动入口：注册模块 / 定时任务，跑一次记忆导入，启动管理面板，连接 WS
 src/core/                 WS 客户端、模块基类、调用链、配置、定时器、管理面板
-src/modules/              功能模块（aiReply / group / common / request / admin）
+src/modules/              功能模块（aiReply / admin）
 src/service/              外部服务封装：LLM、生图、搜网、TTS
 src/tasks/                定时任务：会话缓存清理、记忆巩固
 src/utils/                零业务依赖的工具函数
@@ -224,15 +221,8 @@ yarn test                 # 关键用例：记忆（test/memory.ts）+ 回复（
 - `aliasIndex.ts`：扫 180 天内 `chat_line` 的历史昵称 + `memory` 表里 `kind=alias` 的人工别名，建 `userId → {aliases, groups}` 索引；`resolve(groupId, text)` 返回按分数排序、限定在该群出现过的候选。
 - `mention.ts`：扫最近 5 轮用户发言，解析出的别名若不是当前回复目标，额外注入最多 2 人的完整档案。
 
-### 群功能（[src/modules/group](src/modules/group)）
+### 管理命令
 
-- `command.ts`：斜杠命令分发——`/initiative on|off`、`/voice on|off`、`/tts <文本>`、`/ban <QQ号> [分钟]`。
-- `repeater.ts`：复读机，按群统计连续相同消息数，超随机阈值（2 或 3）延迟复读一次并标记本轮完成。
-
-### 公共模块与管理
-
-- `common/permission.ts`：bot 管理员与群管理员鉴权。
-- `request/requestFriend.ts`：`autoAddFriend` 开启或请求者在预批准名单中则自动通过，否则拒绝，通过后通知管理员。
 - `admin/index.ts`：管理员私聊控制台（白名单鉴权），`/help`、`/clean-memory`。
 
 </details>
