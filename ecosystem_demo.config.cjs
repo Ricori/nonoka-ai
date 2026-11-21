@@ -3,7 +3,7 @@ const path = require('path');
 module.exports = {
   apps: [
     {
-      name: 'nonoka',
+      name: 'nonoka-ai',
       script: path.join(__dirname, 'src/index.ts'),
       interpreter: 'node',
       interpreter_args: '--import tsx',
@@ -34,7 +34,7 @@ module.exports = {
     },
     {
       // 日志网页服务：tail 上面的日志文件，用浏览器实时查看
-      name: 'nonoka-log',
+      name: 'nonoka-ai-log',
       script: path.join(__dirname, 'scripts/log-server.ts'),
       interpreter: 'node',
       interpreter_args: '--import tsx',
