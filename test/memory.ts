@@ -2,15 +2,15 @@ import assert from 'node:assert/strict';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { createMemoryDb, getMeta, setMeta } from '@/modules/aiReply/memory/db';
-import memoryStore from '@/modules/aiReply/memory/store';
-import { recallChat } from '@/modules/aiReply/memory/retrieve';
-import { recallChatEvidence, recallMemoryEvidence } from '@/modules/aiReply/memory/recallEvidence';
-import { formatEvidence } from '@/modules/aiReply/memory/evidence';
-import { saveEmbeddings, searchSimilar } from '@/modules/aiReply/memory/vector';
-import { ingestChatBackups, parseBackupLine } from '@/modules/aiReply/memory/ingest';
-import { segment } from '@/modules/aiReply/memory/segment';
-import { backupDateKey, CHAT_BACKUP_DIR } from '@/modules/aiReply/storage/message';
+import { createMemoryDb, getMeta, setMeta } from '@/memory/db';
+import memoryStore from '@/memory/store';
+import { recallChat } from '@/memory/retrieve';
+import { recallChatEvidence, recallMemoryEvidence } from '@/memory/recallEvidence';
+import { formatEvidence } from '@/memory/evidence';
+import { saveEmbeddings, searchSimilar } from '@/memory/vector';
+import { ingestChatBackups, parseBackupLine } from '@/memory/ingest';
+import { segment } from '@/memory/segment';
+import { backupDateKey, CHAT_BACKUP_DIR } from '@/memory/backup';
 
 /** 用绝不会撞上真实群的号造样本，跑完就删 */
 const FAKE_GROUP = 88888888;

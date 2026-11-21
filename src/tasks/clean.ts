@@ -1,5 +1,5 @@
 import { SimpleIntervalJob, Task } from 'toad-scheduler';
-import messageStorage from '@/modules/aiReply/storage/message';
+import messageStorage from '@/chat/storage/message';
 import { printLog } from '@/utils/print';
 
 const task = new Task('systemCleanupTask', () => {

@@ -1,11 +1,11 @@
 import fs from 'fs';
-import { botConfig } from '@/core/nnkConfig';
+import { botConfig } from '@/config';
 import { embedTexts } from '@/service/llm';
-import { createMemoryDb } from '@/modules/aiReply/memory/db';
-import { recallChat } from '@/modules/aiReply/memory/retrieve';
-import { saveEmbeddings, syncVectorModel } from '@/modules/aiReply/memory/vector';
-import { buildWindows } from '@/modules/aiReply/memory/window';
-import { historySince } from '@/modules/aiReply/memory/policy';
+import { createMemoryDb } from '@/memory/db';
+import { recallChat } from '@/memory/retrieve';
+import { saveEmbeddings, syncVectorModel } from '@/memory/vector';
+import { buildWindows } from '@/memory/window';
+import { historySince } from '@/memory/policy';
 
 /**
  * 语义召回评测与阈值校准：只走字面 vs 字面 + 窗口，在人工标注的查询上扫相似度下限，

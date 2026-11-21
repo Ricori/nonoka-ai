@@ -1,9 +1,9 @@
 import fs from 'fs';
 import path from 'path';
 import Database from 'better-sqlite3';
-import { createMemoryDb } from '@/modules/aiReply/memory/db';
-import { maintainMemory } from '@/modules/aiReply/memory/maintenance';
-import { historySince, usableMemorySql } from '@/modules/aiReply/memory/policy';
+import { createMemoryDb } from '@/memory/db';
+import { maintainMemory } from '@/memory/maintenance';
+import { historySince, usableMemorySql } from '@/memory/policy';
 
 /** 默认只读预览；--apply 先做 SQLite 一致性备份，再迁移、清理及收缩热库。不调用模型。 */
 const file = path.resolve('data/memory/nonoka.db');

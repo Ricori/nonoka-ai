@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import http from 'http';
-import nnkbot from '@/core/nnkBot';
+import { botConfig } from '@/config';
 import type { FormattedMessage } from '@/types/message';
-import { GroupReplyTrigger, scoreMoment } from '@/modules/aiReply/group/trigger';
-import { matchAlias, normalizeAlias, normalizeText } from '@/modules/aiReply/history/nameMatch';
-import { runSearchTool } from '@/modules/aiReply/search/tools';
+import { GroupReplyTrigger, scoreMoment } from '@/chat/trigger';
+import { matchAlias, normalizeAlias, normalizeText } from '@/memory/identity/nameMatch';
+import { runSearchTool } from '@/tools/search';
 import { sanitizePrompt } from '@/service/imageGen';
 
 const user = (message: string, isMentionMe = false): FormattedMessage => ({
@@ -76,8 +76,8 @@ const user = (message: string, isMentionMe = false): FormattedMessage => ({
     });
   }).listen(PORT, '127.0.0.1');
   // 全部指向假服务端，不烧真实额度
-  nnkbot.config.nonokaService = { baseUrl: `http://127.0.0.1:${PORT}`, apiKey: 'testkey' };
-  nnkbot.config.aiReply.search = {
+  botConfig.nonokaService = { baseUrl: `http://127.0.0.1:${PORT}`, apiKey: 'testkey' };
+  botConfig.aiReply.search = {
     enable: true, whiteGroupIds: [], dailyLimit: 2, count: 5,
   };
   try {

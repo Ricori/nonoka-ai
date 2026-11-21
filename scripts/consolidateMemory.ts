@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
-import { botConfig } from '@/core/nnkConfig';
-import { consolidateMemory, getConsolidationBacklog } from '@/modules/aiReply/memory/consolidate';
-import { getMemoryDb } from '@/modules/aiReply/memory/db';
+import { botConfig } from '@/config';
+import { consolidateMemory, getConsolidationBacklog } from '@/memory/consolidate';
+import { getMemoryDb } from '@/memory/db';
 
 /**
  * 手动跑一次巩固：导入日志、切语义窗口、补向量、淘汰。不调 chat 模型，只花 embedding。

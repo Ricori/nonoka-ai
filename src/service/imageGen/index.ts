@@ -1,16 +1,12 @@
 import Axios from 'axios';
 import FormData from 'form-data';
 import sharp from 'sharp';
-import { botConfig } from '@/core/nnkConfig';
+import { botConfig } from '@/config';
 import { sleep } from '@/utils/function';
 import { printError, printLog } from '@/utils/print';
 
 /**
  * 图片生成，直连上游（gpt-image-2）。
- *
- * 原本走 nonoka API 服务转发，但出图要 130s+，Cloudflare 边缘等不到响应就会切成 524，
- * 流式保活也没兜住，所以这里绕开 Worker 直连——本地 Node 没有这个时间上限。
- * Worker 上的 /v1/images/* 路由保留着，给其它调用方用
  */
 
 /** 实测出图 60~150s，留到 300s。后台出图不阻塞对话，等久点没关系 */

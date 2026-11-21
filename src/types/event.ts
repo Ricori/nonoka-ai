@@ -22,24 +22,6 @@ interface GroupSender extends PrivateSender {
   title?: string,
 }
 
-/** 好友请求事件类型 */
-export interface RequestFirendMessageData {
-  /** 事件发生的时间戳 */
-  time: number,
-  /** 收到事件的机器人 QQ 号 */
-  self_id: number,
-  /** 上报类型 */
-  post_type: 'request',
-  /** 请求类型 */
-  request_type: 'friend',
-  /** 发送请求的 QQ 号 */
-  user_id: number,
-  /** 验证信息 */
-  comment: number,
-  /** 请求 flag, 在调用处理请求的 API 时需要传入 */
-  flag: number,
-}
-
 /** 简单消息类型 */
 export interface SimpleMessageData {
   /** 消息ID */
@@ -89,4 +71,4 @@ export interface GroupMessageData extends SimpleMessageData {
 }
 
 /** 消息类型 */
-export type MessageType = RequestFirendMessageData | SimpleMessageData | PrivateMessageData | GroupMessageData;
+export type MessageType = SimpleMessageData | PrivateMessageData | GroupMessageData;

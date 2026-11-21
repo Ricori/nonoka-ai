@@ -6,8 +6,6 @@ export interface WSConfig {
 }
 
 export interface BotConfig {
-  /** 管理员qq数组 */
-  admin: number[];
   /** nonoka API服务 */
   nonokaService: {
     /** API服务地址 */
@@ -17,9 +15,9 @@ export interface BotConfig {
   };
   /** 第三方服务 API 密钥（不通过管理面板读取或修改，直接编辑 config.json） */
   apiKeys: {
-    /** 画图上游。出图要 130s+，过 nonoka 服务会被 CF 边缘切成 524，只能直连 */
+    /** 画图上游 */
     imageGen: {
-      /** 上游地址，如 https://api.llm-token.cn */
+      /** 上游地址（OpenAI兼容） */
       baseUrl: string;
       /** 上游密钥 */
       apiKey: string;
@@ -70,7 +68,7 @@ export interface BotConfig {
       enable?: boolean;
       /** 白名单群号，留空则所有开了 AI 回复的群都能搜 */
       whiteGroupIds?: number[];
-      /** 每群每日搜索上限，默认 20。上游免费额度是每月 1000 次。 */
+      /** 每群每日搜索上限，默认 20 */
       dailyLimit?: number;
       /** 单次返回的结果条数，默认 5，上限 8 */
       count?: number;

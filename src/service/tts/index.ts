@@ -1,5 +1,5 @@
 import { printError } from '@/utils/print';
-import { botConfig } from '@/core/nnkConfig';
+import { botConfig } from '@/config';
 import axios from 'axios';
 
 export type TTSLang = 'ja' | 'zh';
@@ -118,8 +118,7 @@ export interface SegmentedVoiceResult {
 /**
  * 长文本切块串行合成并逐条发送，返回发了几条、还剩多少没发。
  *
- * 串行是服务端要求的（单 GPU 容器、一次一个请求，并发只会在 Modal 侧排队）；
- * 每块合成完立刻发出去，不等整段做完，免得群里干等几十秒。
+ * 串行是服务端要求的，每块合成完立刻发出去，不等整段做完，免得群里干等几十秒。
  * 中途失败就停下，剩余文本交回调用方处理，别让 GPU 继续为一个已经断掉的回复干活。
  */
 export async function sendSegmentedVoice(

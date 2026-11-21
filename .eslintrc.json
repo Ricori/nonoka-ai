@@ -33,54 +33,29 @@
     "import/no-restricted-paths": ["error", {
       "zones": [
         {
+          "target": "./src/utils",
+          "from": ["./src/config.ts", "./src/bot", "./src/service", "./src/memory", "./src/tools", "./src/chat", "./src/tasks", "./src/panel"],
+          "message": "utils 应保持零业务依赖"
+        },
+        {
+          "target": ["./src/config.ts", "./src/bot"],
+          "from": ["./src/service", "./src/memory", "./src/tools", "./src/chat", "./src/tasks", "./src/panel"],
+          "message": "底层 config / bot 不要反向依赖上层服务或业务"
+        },
+        {
           "target": "./src/service",
-          "from": "./src/core/nnkBot.ts",
-          "message": "service 层不要依赖 nnkBot 单例，配置请从 @/core/nnkConfig 获取"
+          "from": ["./src/bot", "./src/memory", "./src/tools", "./src/chat", "./src/tasks", "./src/panel"],
+          "message": "service 层只从 @/config 获取配置，不要依赖 bot 或业务层"
         },
         {
-          "target": "./src/service",
-          "from": "./src/modules",
-          "message": "service 层不要依赖 modules"
+          "target": ["./src/memory", "./src/tools"],
+          "from": ["./src/chat", "./src/tasks", "./src/panel"],
+          "message": "memory / tools 层不要反向依赖 chat / tasks / panel"
         },
         {
-          "target": "./src/service",
-          "from": "./src/tasks",
-          "message": "service 层不要依赖 tasks"
-        },
-        {
-          "target": "./src/modules",
-          "from": "./src/tasks",
-          "message": "modules 不要依赖 tasks，公共逻辑请下沉到 service 层"
-        },
-        {
-          "target": "./src/core",
-          "from": "./src/tasks",
-          "message": "core 不要依赖 tasks"
-        },
-        {
-          "target": "./src/core",
-          "from": "./src/service",
-          "message": "core 不要依赖 service"
-        },
-        {
-          "target": "./src/utils",
-          "from": "./src/core",
-          "message": "utils 应保持零业务依赖"
-        },
-        {
-          "target": "./src/utils",
-          "from": "./src/modules",
-          "message": "utils 应保持零业务依赖"
-        },
-        {
-          "target": "./src/utils",
-          "from": "./src/service",
-          "message": "utils 应保持零业务依赖"
-        },
-        {
-          "target": "./src/utils",
-          "from": "./src/tasks",
-          "message": "utils 应保持零业务依赖"
+          "target": "./src/chat",
+          "from": ["./src/tasks", "./src/panel"],
+          "message": "chat 层不要依赖 tasks / panel"
         }
       ]
     }],

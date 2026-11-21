@@ -4,9 +4,6 @@
     "port": 6700
   },
   "botConfig": {
-    "admin": [
-      515302066
-    ],
     "nonokaService": {
       "baseUrl": "",
       "apiKey": ""

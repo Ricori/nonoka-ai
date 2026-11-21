@@ -1,4 +1,4 @@
-import { extractCQCodes, hasCQCode, transformCQCodes } from './msgCode';
+import { extractCQCodes, hasCQCode } from './msgCode';
 
 /** 返回文本数组中随机文本 */
 export function randomText(textArr: string[]) {
@@ -6,21 +6,13 @@ export function randomText(textArr: string[]) {
   return textArr[i];
 }
 
-/** 判断消息是否有图片
- * @param {string} msg 消息
- * @returns 有则返回true
- */
+/** 判断消息是否有图片 */
 export function hasImage(msg: string) {
   // 残缺的图片 CQ 码解析不出图，不算有图，调用方可放心取 getImgs(msg)[0]
   return hasCQCode(msg, 'image') && getImgs(msg).length > 0;
 }
 
-
-/** 从消息中提取图片
- * @param {string} msg cqtext
- * @param {boolean} extra 是否提取额外信息
- * @returns 图片URL数组
- */
+/** 从消息中提取图片 */
 export function getImgs(msg: string, extra = false) {
   const cqimgs = extractCQCodes(msg).filter((cq) => cq.type === 'image');
   return cqimgs.map((cq) => {
@@ -29,67 +21,26 @@ export function getImgs(msg: string, extra = false) {
   });
 }
 
-/** 判断消息是否回复消息
- * @param {string} msg 消息
- * @returns 有则返回true
- */
+/** 判断消息是否回复消息 */
 export function hasReply(msg: string) {
   return hasCQCode(msg, 'reply');
 }
 
-/** 判断消息中是否有@人
- * @param {string} msg 消息
- * @returns 有则返回true
- */
-export function hasAt(msg: string) {
-  return hasCQCode(msg, 'at');
-}
-
-/** 从消息中提取回复reply id
- * @param {string} msg
- */
+/** 从消息中提取回复 reply id */
 export function getReplyMsgId(msg: string) {
   const reply = extractCQCodes(msg).find((cq) => cq.type === 'reply');
   return reply?.data.get('id') || 0;
 }
 
-/** 从消息中提取回复forward id
- * @param {string} msg
- */
-export function getForwardMessageId(msg: string) {
-  const forward = extractCQCodes(msg).find((cq) => cq.type === 'forward');
-  return forward?.data.get('id') || 0;
-}
-
-/** 从消息中去除@和replay文本
- * @param {string} msg
- */
-export function cleanAt(msg: string) {
-  return transformCQCodes(msg, (cq) => (cq.type === 'at' || cq.type === 'reply' ? '' : null)).trimStart();
-}
-
-
-/** 去除首尾指定字符
- */
-export function trimChar(str: string | null, char: string) {
-  if (!str) return '';
-  // 转义特殊字符
-  const escapedChar = char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const reg = new RegExp(`^${escapedChar}+|${escapedChar}+$`, 'g');
-  return str.replace(reg, '');
-}
-
 /** sleep */
-export function sleep(ms: number) { return new Promise((resolve) => { setTimeout(resolve, ms); }); }
+export function sleep(ms: number) {
+  return new Promise((resolve) => { setTimeout(resolve, ms); });
+}
 
-/**
- * 根据字数计算人类打字时间
- * @param text 要发送的文本
- * @returns 延迟毫秒数
- */
+/** 根据字数计算人类打字延迟毫秒数 */
 export function calculateTypingDelay(text: string): number {
-  const baseDelay = 500; // 基础延迟
-  const timePerChar = 120; // 假设人类每打一个字需要 120ms
-  const jitter = Math.floor(Math.random() * 600) - 300; // 随机波动
+  const baseDelay = 500;
+  const timePerChar = 120;
+  const jitter = Math.floor(Math.random() * 600) - 300;
   return Math.max(baseDelay + (text.length * timePerChar) + jitter, 500);
 }

@@ -1,10 +1,10 @@
-import { botConfig } from '@/core/nnkConfig';
-import aliasIndex from '@/modules/aiReply/history/aliasIndex';
-import { getMemoryDb } from '@/modules/aiReply/memory/db';
-import { buildTermQueries, recallChat, recallMemory } from '@/modules/aiReply/memory/retrieve';
-import { queryTerms } from '@/modules/aiReply/memory/segment';
-import memoryStore from '@/modules/aiReply/memory/store';
-import { runMemoryTool } from '@/modules/aiReply/memory/tools';
+import { botConfig } from '@/config';
+import aliasIndex from '@/memory/identity/aliasIndex';
+import { getMemoryDb } from '@/memory/db';
+import { buildTermQueries, recallChat, recallMemory } from '@/memory/retrieve';
+import { queryTerms } from '@/memory/segment';
+import memoryStore from '@/memory/store';
+import { runMemoryTool } from '@/memory/tools';
 
 /**
  * 召回探针：不发消息、不惊动群，直接问「这句话能召回什么」。

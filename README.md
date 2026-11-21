@@ -7,7 +7,9 @@
 
 一个住在 QQ 群里的 AI。她会自己决定什么时候插话，记得群友半年前说过什么，还会自己画画。
 
-底层是一条轻量的**模块调用链**：消息进来，按注册顺序一个个模块问"这条归我管吗"，谁接住谁处理。这个仓库负责编排消息、执行工具调用、维护本地记忆。
+架构以 **AI 回复主链路** 为核心：OneBot 正向 WebSocket 收到群聊 / 私聊消息后直接进入回复编排层，负责上下文格式化、主动插话决策、工具调用循环、本地 SQLite 记忆维护与语音/分段发送。
+
+> 本仓库仅专注 AI 对话与记忆系统；定时推送、搜图、图库、涩图、复读机、群命令等工具/功能类模块已拆分至独立的 QQ 机器人仓库：[nonoka-assistant-bot](https://github.com/Ricori/nonoka-assistant-bot)。
 
 ## 她都会些什么
 
@@ -17,9 +19,9 @@
 
 **🎨 自然语言生图。** 自然语言调起画图工具，生图期间依旧可以自然回复，并知道自己的画画状态。`drawing → done/failed/blocked` 的状态机结果会注入下一轮 prompt。
 
-**🗣️ 知道你们在说谁。** 群友互相叫外号，模型是分不清的。`nameMatch` 做归一化模糊匹配（去 emoji、零宽字符、尾部语气词，还对拉丁字符做边界检查，免得 `azu` 命中 `azusa` 内部），`aliasIndex` 扫 180 天历史昵称建索引，`mention` 会把对话里顺带提到的人的档案也塞给模型。
+**🗣️ 知道你们在说谁。** 群友互相叫外号，模型是分不清的。`nameMatch` 做归一化模糊匹配（去 emoji、零宽字符、尾部语气词，还对拉丁字符做边界检查，免得 `azu` 命中 `azusa` 内部），`aliasIndex` 扫历史昵称建索引，`mention` 会把对话里顺带提到的人的档案也塞给模型。
 
-**🗣️ 语音与面板。** 支持 TTS 语音回复与内嵌管理面板热改配置/维护记忆库（推送、搜图、图库、涩图、复读机、群命令等功能类已全部拆分至独立的 QQ 官方机器人 `nonoka-assistant-bot`）。
+**🗣️ 语音与单页管理面板。** 支持 TTS 语音回复，内嵌单页管理面板统一完成 AI 回复配置热更新、会话缓存清理、群档案维护、人物记忆/原话证据管理与巩固状态查看。
 
 ## 快速开始
 
@@ -29,10 +31,9 @@
 yarn install
 ```
 
-复制 `config_demo.json` 为 `config.json`，填这四个：
+复制 `config_demo.json` 为 `config.json`，填这三个：
 
 - `wsConfig` —— OneBot 正向 WS 的 host / port
-- `botConfig.admin` —— 管理员 QQ 号列表，管理员私聊能发控制命令
 - `botConfig.nonokaService` —— Nonoka 服务地址与 apiKey
 - `botConfig.apiKeys.imageGen` —— 生图服务的上游地址与密钥
 
@@ -42,55 +43,7 @@ yarn install
 yarn dev
 ```
 
-想看详细日志用 `yarn debug`。剩下的配置项（插话开关、黑名单、各功能白名单、推送订阅）都能在跑起来之后从管理面板改，不用重启。
-
-## 开发指南：两分钟塞一个新功能进去
-
-模块调用链的好处是加功能几乎没有仪式感——写一个 `match` 判断"这条消息归我吗"，写一个 `run` 干活，注册一行，完事。
-
-**第一步，想清楚你要拦哪种消息。** `request`（好友请求）/ `private`（私聊）/ `group`（群聊）。群聊还能再精确一层：`group:at`（被 @ 了）和 `group:plain`（没被 @）。
-
-**第二步，在对应目录建个文件：**
-
-```ts
-import {
-  EventKind, FlowResult, ModuleContext, NonokaModule,
-} from '@/core/nnkModule';
-import { GroupMessageData } from '@/types/event';
-
-class MyModule extends NonokaModule<GroupMessageData> {
-  readonly name = 'MyModule';
-
-  readonly events: EventKind[] = ['group:plain'];
-
-  // 只做判断，不产生副作用；命中数据通过返回值传给 run
-  match(ctx: ModuleContext<GroupMessageData>) {
-    return /触发词/.test(`${ctx.data.message}`);
-  }
-
-  // 真正的副作用（发消息、写状态）都放这里
-  run(ctx: ModuleContext<GroupMessageData>): FlowResult {
-    ctx.reply('收到～');
-    return 'stop'; // 或 'continue' 继续传给链上后面的模块
-  }
-}
-
-export default new MyModule();
-```
-
-**第三步，去 [src/index.ts](src/index.ts) 的 `loadModules([...])` 里加一行。** 数组顺序就是优先级：越靠前越先拿到消息，`run` 不返回 `'continue'` 的话，后面的模块这辈子都见不到这条消息。所以别把万能匹配的模块放前面。
-
-**两个容易踩的坑：**
-
-- 模块是**单例**（`export default new MyModule()`），实例在所有消息之间共享。别拿实例字段存单条消息的状态，并发一来就串了——命中阶段算出来的东西通过 `match` 的返回值传给 `run`。
-- 要调外部 API 的话，封装到 `src/service/` 里，别在 `modules/` 里直接发 HTTP。ESLint 会拦你（见下面的分层规则）。
-
-**还需要别的：**
-
-- **定时任务** → 在 [src/tasks](src/tasks) 实现，`nnkSchedule.loadJob([...])` 注册，抄现有任务的 `preventOverrun` / 失败退避写法。
-- **新配置字段** → [src/types/config.ts](src/types/config.ts) 加类型，`config_demo.json` 补默认值；想让管理面板能改就往 [src/core/admin/config.ts](src/core/admin/config.ts) 的白名单里加（密钥类字段不要加）。
-
-提交前跑 `yarn lint`。**动了记忆检索或 prompt 的话，跑 `yarn memory:probe` / `yarn memory:eval` 用真实语料实测**，每组建议 ≥30 条——这块凭感觉改反复被数据打脸过。
+想看详细日志用 `yarn debug`。其余 AI 回复开关、黑名单、主动发言群、语音群、群档案和人物记忆都可在启动后通过内嵌管理面板热改，无需重启。
 
 ## 架构总览
 
@@ -99,52 +52,48 @@ export default new MyModule();
         │
         │  正向 WebSocket（api 连接 + event 连接）
         ▼
-   src/core/nnkWS.ts
+   src/bot/（ws.ts + 精简收发客户端）
         │
-        │  friend / private / group
+        │  onPrivateMessage / onGroupMessage
         ▼
-   src/core/nnkCore.ts  NonokaCore.flow()
-        │
-        │  派生 group:at / group:plain，构造 ModuleContext
-        ▼
-┌───────────────────────────────────────────────┐
-│  moduleList（按 src/index.ts 注册顺序遍历）     │
-│  管理员命令 → 私聊 AI → 群聊 AI                 │
-│  每个模块：match(ctx) 命中判定 → run(ctx, hit)  │
-│  run 返回 'continue' 才继续往下传，否则链路终止  │
-└───────────────────────────────────────────────┘
+   src/chat/（group.ts / private.ts / generateReply.ts / trigger.ts）
         │                              │
         ▼                              ▼
- src/service/*（API 封装）      src/modules/aiReply/memory/*
- LLM / 生图 / 搜网 / TTS        SQLite 记忆库（FTS5 + 向量）
+ src/service/*（HTTP 封装）     src/memory/* + src/tools/*
+ LLM / 生图 / 搜网 / TTS        SQLite 记忆库（FTS5 + 向量）/ 身份消解 / 工具集
 ```
 
 ```
-src/index.ts              启动入口：注册模块 / 定时任务，跑一次记忆导入，启动管理面板，连接 WS
-src/core/                 WS 客户端、模块基类、调用链、配置、定时器、管理面板
-src/modules/              功能模块（aiReply / admin）
-src/service/              外部服务封装：LLM、生图、搜网、TTS
-src/tasks/                定时任务：会话缓存清理、记忆巩固
-src/utils/                零业务依赖的工具函数
-scripts/                  独立脚本：记忆巩固、召回评测/探测、日志网页服务
-data/                     运行期数据：SQLite 记忆库、聊天备份、表情素材
+src/index.ts        启动入口：记忆增量导入 → 定时任务 → 单页管理面板 → 连接 OneBot WS
+src/config.ts       全局配置加载、校验、热更新与原子落盘（单一真相源）
+src/bot/            OneBot 正向 WS 与精简收发 API（sendGroupMsg / sendPrivateMsg / getMessageFromId）
+src/chat/           AI 回复核心编排：群聊/私聊处理、防抖与并发锁、主动插话、格式化、分段发送、会话缓存与群档案
+src/memory/         SQLite 记忆系统（ingest / segment / extract / store / vector / retrieve / consolidate）与身份消解（identity/）
+src/tools/          非记忆类 LLM 工具：画图（imageGen.ts）、联网搜索（search.ts）
+src/service/        外部 HTTP 服务封装：LLM、生图、搜网、TTS
+src/tasks/          定时调度器（scheduler.ts）与定时任务：会话缓存清理、记忆巩固
+src/panel/          单页 Web 管理面板（page.html + /api/config + /api/status + /api/chat/clean + /api/memory/*）
+src/types/          TypeScript 类型定义
+src/utils/          零业务依赖工具函数
+scripts/            独立脚本：记忆巩固、召回评测/探测、日志网页服务
+data/               运行期数据：SQLite 记忆库、聊天备份、表情素材
 ```
 
 ## 记忆系统是怎么跑的
 
-全仓库最复杂的一块，基于 `better-sqlite3`，单文件库 `data/memory/nonoka.db`。代码在 [src/modules/aiReply/memory](src/modules/aiReply/memory)。
+全仓库最复杂的一块，基于 `better-sqlite3`，单文件库 `data/memory/nonoka.db`。代码在 [src/memory](src/memory)。
 
 从一条群消息到"她记得这件事"，中间有九步：
 
 1. **落盘** —— 群消息实时追加写进 `data/memory/chat/{groupId}_{yyyymmdd}.txt` 纯文本，这是记忆系统唯一的事实来源。
-2. **增量导入**（[ingest.ts](src/modules/aiReply/memory/ingest.ts)）—— 仅把近 45 天的备份解析进 `chat_line`/`chat_fts`，按 group/day 记水位线，幂等；旧备份保留为冷历史，不重新导入。
-3. **分词**（[segment.ts](src/modules/aiReply/memory/segment.ts)）—— jieba + 群内人名/黑话自定义词典（不然专有名词会被拆成单字），TF-IDF 提关键词。
-4. **抽取**（[extract.ts](src/modules/aiReply/memory/extract.ts)）—— 每人跨群攒够 10 条本人陈述调一次 LLM，产出 ADD/UPDATE/DELETE 操作。用户档案按 QQ 号全局共享；单群批次记录来源群，跨群混合批次不强行归到某个群。只跟踪 @ 过 bot 的用户。抽取要花钱，触发上有三道闸：`[表情]`/复读/太短/≥3 人说过的同一句（群梗）不计数、连续几轮学不到新东西就把阈值翻倍（最多 8 倍）、同一个人两次抽取之间有冷却（默认 4h，见 `aiReply.memory.extractThreshold` / `extractCooldownMin`）。
-5. **存储**（[store.ts](src/modules/aiReply/memory/store.ts)）—— 非置顶可用记忆每人最多 14 条：6 条 trait、4 条 episode、各 2 条已确认 alias/relation。自动记忆 45 天未印证即失效；人工确认的内容不按时间失效，但非置顶仍受配额限制。置顶条目保留且不占自动配额。回复默认最多注入 4 条印象。
-6. **向量化**（[vector.ts](src/modules/aiReply/memory/vector.ts)）—— 单位化 Float32 向量，暴力余弦 Top-K（量级在千级，不值得上索引）；`embedQueue` 攒 20 条或 15 秒触发一次，不阻塞回复主链路。
-7. **检索**（[retrieve.ts](src/modules/aiReply/memory/retrieve.ts)）—— BM25 与向量余弦双路召回，RRF（k=60）融合。相似度下限人物档案 0.55、聊天窗口 0.50（一个窗口混着多个话题，整体相似度被稀释），都过不了时再放行排名最前的 5 个弱候选。默认及最大聊天范围均为 45 天；人物范围和有效性在 Top-K 前过滤。同一个 `chat_window` 最多占 3 个名额（窗口有重叠，一行只算进它所在的第一个窗口）；命中附同群同日的相邻上下文并标注说话人。具体事实查不到就返回空，仅人物概览允许档案兜底。
-8. **巩固**（[consolidate.ts](src/modules/aiReply/memory/consolidate.ts)，每天四轮）—— 清理 → 导入 → 本地过滤纯占位符、附和和同一人的短距离复读 → 把每天的日志按 12 行一窗、步长 8 切成重叠的 `chat_window`（直接拿原文向量化，不调 chat 模型）→ 补齐缺失向量 → 全用户跑一次淘汰。过去的日子切完就推水位不再重读；今天只切满员窗口，每轮重扫一遍。**`chat_window` 只在这一步产生。**
-9. **工具化**（[tools.ts](src/modules/aiReply/memory/tools.ts)）—— 包装成 `recall_memory` / `recall_chat` 两个 LLM 工具，模型给的"关于谁"经 `aliasIndex.resolve()` 消解成 userId，任何异常都不抛出（保证工具调用链不断）。
+2. **增量导入**（[ingest.ts](src/memory/ingest.ts)）—— 仅把近 45 天的备份解析进 `chat_line`/`chat_fts`，按 group/day 记水位线，幂等；旧备份保留为冷历史，不重新导入。
+3. **分词**（[segment.ts](src/memory/segment.ts)）—— jieba + 群内人名/黑话自定义词典（不然专有名词会被拆成单字），TF-IDF 提关键词。
+4. **抽取**（[extract.ts](src/memory/extract.ts)）—— 每人跨群攒够 10 条本人陈述调一次 LLM，产出 ADD/UPDATE/DELETE 操作。用户档案按 QQ 号全局共享；单群批次记录来源群，跨群混合批次不强行归到某个群。只跟踪 @ 过 bot 的用户。抽取要花钱，触发上有三道闸：`[表情]`/复读/太短/≥3 人说过的同一句（群梗）不计数、连续几轮学不到新东西就把阈值翻倍（最多 8 倍）、同一个人两次抽取之间有冷却（默认 4h，见 `aiReply.memory.extractThreshold` / `extractCooldownMin`）。
+5. **存储**（[store.ts](src/memory/store.ts)）—— 非置顶可用记忆每人最多 14 条：6 条 trait、4 条 episode、各 2 条已确认 alias/relation。自动记忆 45 天未印证即失效；人工确认的内容不按时间失效，但非置顶仍受配额限制。置顶条目保留且不占自动配额。回复默认最多注入 4 条印象。
+6. **向量化**（[vector.ts](src/memory/vector.ts)）—— 单位化 Float32 向量，暴力余弦 Top-K（量级在千级，不值得上索引）；`embedQueue` 攒 20 条或 15 秒触发一次，不阻塞回复主链路。
+7. **检索**（[retrieve.ts](src/memory/retrieve.ts)）—— BM25 与向量余弦双路召回，RRF（k=60）融合。相似度下限人物档案 0.55、聊天窗口 0.50（一个窗口混着多个话题，整体相似度被稀释），都过不了时再放行排名最前的 5 个弱候选。默认及最大聊天范围均为 45 天；人物范围和有效性在 Top-K 前过滤。同一个 `chat_window` 最多占 3 个名额（窗口有重叠，一行只算进它所在的第一个窗口）；命中附同群同日的相邻上下文并标注说话人。具体事实查不到就返回空，仅人物概览允许档案兜底。
+8. **巩固**（[consolidate.ts](src/memory/consolidate.ts)，每天四轮）—— 清理 → 导入 → 本地过滤纯占位符、附和和同一人的短距离复读 → 把每天的日志按 12 行一窗、步长 8 切成重叠的 `chat_window`（直接拿原文向量化，不调 chat 模型）→ 补齐缺失向量 → 全用户跑一次淘汰。过去的日子切完就推水位不再重读；今天只切满员窗口，每轮重扫一遍。**`chat_window` 只在这一步产生。**
+9. **工具化**（[tools.ts](src/memory/tools.ts)）—— 包装成 `recall_memory` / `recall_chat` 两个 LLM 工具，模型给的"关于谁"经 `aliasIndex.resolve()` 消解成 userId，任何异常都不抛出（保证工具调用链不断）。
 
 <details>
 <summary>数据模型（点击展开）</summary>
@@ -168,21 +117,19 @@ data/                     运行期数据：SQLite 记忆库、聊天备份、�
 
 **人物归属与历史分层：** 自动抽取只发送明确的第一人称本人陈述，不附带别人的引文；问句、转述和第三人称主体不用于建立档案，非删除操作置信度至少 0.7。`alias` / `relation` 只允许人工维护，模型不能增删改，也不能通过把类型改成 trait 绕过。昵称识别仍直接使用近 45 天消息绑定的账号和昵称。工具遇到歧义称呼时不混合多人的档案。
 
-v8 迁移把历史未知来源的 alias/relation 隔离，置顶和明确标记“管理面板”的来源视为已确认。管理页显示“未确认，已隔离”，核对原话后点“确认并保存”恢复；改名或删除会立即重建别名缓存。旧人物向量无法验证对应的文本版本，迁移时一次性失效；只为收紧后仍可用的条目分批补齐（每轮最多 100 条）。期间文字检索和档案注入可用。以后文本更新立即摘掉旧向量，异步返回时再次比较原文，避免旧结果写回。
-
-启动和定时巩固会清理超过 45 天的 `chat_line`、FTS、`chat_window` 及其向量，并删掉指向已消失行的孤儿向量；热向量缓存也只装载可用数据，补齐任务不会复活冷历史。冷层使用原有 `data/memory/chat/*.txt` 备份。`yarn memory:maintain` 只读预览；加 `--apply` 会先在 `data/memory/backups/` 保存 SQLite 一致性备份，再执行迁移、清理、FTS 合并和 VACUUM。备份另占磁盘空间，热库缩小不代表备份总量也缩小。
+启动和定时巩固会清理超过 45 天的 `chat_line`、FTS、`chat_window` 及其向量，并删掉指向已消失行的孤儿向量；热向量缓存也只装载可用数据，补齐任务不会复活冷历史。冷层使用原有 `data/memory/chat/*.txt` 备份。`yarn memory:maintain` 只读预览；加 `--apply` 会先在 `data/memory/backups/` 保存 SQLite 一致性备份，再执行迁移、清理、FTS 合并和 VACUUM。
 
 `yarn test` 用临时库验证老库拒开、备份导入、跨群隔离、向量失效、身份防伪和重排回退，不调用模型。
 
 ## 部署
 
-生产用 PM2（见 [ecosystem.config.cjs](ecosystem.config.cjs)），同时拉起 bot 主进程和一个 tail 日志的网页服务：
+生产用 PM2（见 [ecosystem_demo.config.cjs](ecosystem_demo.config.cjs)），同时拉起 bot 主进程和一个 tail 日志的网页服务：
 
 ```bash
 pm2 start ecosystem.config.cjs
 ```
 
-其他脚本：
+常用脚本：
 
 ```bash
 yarn lint                 # eslint 检查 src/
@@ -196,34 +143,30 @@ yarn test                 # 关键用例：记忆（test/memory.ts）+ 回复（
 ## 参考
 
 <details>
-<summary><b>模块细节</b>：AI 回复、群功能、公共模块、管理命令</summary>
+<summary><b>模块细节</b>：AI 回复、格式化、工具调用、身份消解</summary>
 
-### AI 回复
+### AI 回复（[src/chat](src/chat)）
 
-- **群聊**（[src/modules/aiReply/group](src/modules/aiReply/group)，事件 `group`）：每条消息先入库（`messageStorage` + `aliasIndex`），再决定是否回复——被 `@` 必回，否则交给 `trigger.ts`：关键词与 @ 衰减算出每小时的插话预算，再按时机分（群友正在找 bot、纯表情、在回复别人）把概率挪到更容易接上话的消息，超预算就收紧；离线回放见 `scripts/initiativeReplay.ts`。同群回复做了 3.5s 防抖（`sessionTimers`）+ 并发锁（`processingLocks`）避免刷屏时连续触发。`generateReply.ts` 组装历史 + 记忆上下文 + 系统提示，按场景裁剪工具集（记忆工具常驻，生图/搜图按开关启用），控制工具调用轮数：被 `@` 1 轮，插话 0 轮（插话不该拖慢群里的节奏）。`voiceState.ts` 是按群维护的 TTS 开关。
-- **私聊**（[src/modules/aiReply/private](src/modules/aiReply/private)，事件 `private`）：无防抖、无触发概率、无工具循环，收到即格式化 → 追加历史 → `getLLMReply` → 分段发送，是群聊流程的简化版。
+- **群聊**（[group.ts](src/chat/group.ts)）：每条消息先入库（`messageStorage` + `aliasIndex`），再决定是否回复——被 `@` 必回，否则交给 `trigger.ts` 按每小时插话预算和时机分决策。同群回复做 3.5s 防抖 + 并发锁避免刷屏连续触发。`generateReply.ts` 组装历史 + 记忆上下文 + 群档案，按场景裁剪工具集，控制工具调用轮数（被 `@` 1 轮，主动插话 0 轮）。开启语音回复的群优先走 TTS。
+- **私聊**（[private.ts](src/chat/private.ts)）：无防抖、无触发概率、无工具循环，收到即格式化 → 追加历史 → `getLLMReply` → 分段发送。
 
 ### 格式化与发送
 
-- [format.ts](src/modules/aiReply/format.ts)：CQ 码 → LLM 可读文本（表情/视频/卡片 JSON 的翻译）、@ 提及与 bot 别名识别、按尺寸和子类型区分"真实照片"和"表情包"。
-- [replySender.ts](src/modules/aiReply/replySender.ts)：按 `||` 切分成多个"气泡"，模拟逐段打字延迟顺序发送。
-- [stickerMap.ts](src/modules/aiReply/stickerMap.ts)：把模型输出的 `[表情: 关键词]` 替换成本地表情包 CQ 码，概率丢弃以显得更自然。
-- [storage/groupProfile.ts](src/modules/aiReply/storage/groupProfile.ts)：`data/memory/group/{groupId}.json` 存 `chanceScale`（插话概率倍率）和 `profileText`（群人设），mtime/size 变化即失效缓存，面板改完立即生效。
+- [format.ts](src/chat/format.ts)：CQ 码 → LLM 可读文本（表情/视频/卡片 JSON 翻译）、@ 提及与 bot 别名识别、按尺寸和子类型区分"真实照片"和"表情包"。
+- [replySender.ts](src/chat/replySender.ts)：按 `||` 切分成多个气泡，模拟逐段打字延迟顺序发送。
+- [stickerMap.ts](src/chat/stickerMap.ts)：把模型输出的 `[表情: 关键词]` 替换成本地表情包 CQ 码，概率丢弃以显得更自然。
+- [storage/groupProfile.ts](src/chat/storage/groupProfile.ts)：`data/memory/group/{groupId}.json` 存 `chanceScale`（插话概率倍率）和 `profileText`（群人设），mtime/size 变化即失效缓存，面板改完立即生效。
 
-### 工具调用
+### 工具调用（[src/tools](src/tools)）
 
-- **生图**（[imageGen/tools.ts](src/modules/aiReply/imageGen/tools.ts)）：`draw_image` / `edit_image`，异步非阻塞 + 状态机注入，按群维护每日配额和冷却时间，并发防抖避免重复请求。
-- **搜索**（[search/tools.ts](src/modules/aiReply/search/tools.ts)）：`web_search` 转发到 `service/search.ts`。按群每日配额（默认 20 次），摘要截断 140 字，并显式要求模型不要罗列 URL、不要说"我搜索了"。
+- **生图**（[imageGen.ts](src/tools/imageGen.ts)）：`draw_image` / `edit_image`，异步非阻塞 + 状态机注入，按群维护每日配额和冷却时间。
+- **搜索**（[search.ts](src/tools/search.ts)）：`web_search` 转发到 `service/search.ts`，按群维护每日配额，摘要截断 140 字。
 
-### 别名 / 提及消解（[src/modules/aiReply/history](src/modules/aiReply/history)）
+### 身份 / 提及消解（[src/memory/identity](src/memory/identity)）
 
 - `nameMatch.ts`：归一化文本与别名后，取最长公共子串重叠度打分，对拉丁字符子串做边界检查。
-- `aliasIndex.ts`：扫 180 天内 `chat_line` 的历史昵称 + `memory` 表里 `kind=alias` 的人工别名，建 `userId → {aliases, groups}` 索引；`resolve(groupId, text)` 返回按分数排序、限定在该群出现过的候选。
+- `aliasIndex.ts`：扫近 45 天 `chat_line` 的历史昵称 + `memory` 表里 `kind=alias` 的人工别名，建 `userId → {aliases, groups}` 索引。
 - `mention.ts`：扫最近 5 轮用户发言，解析出的别名若不是当前回复目标，额外注入最多 2 人的完整档案。
-
-### 管理命令
-
-- `admin/index.ts`：管理员私聊控制台（白名单鉴权），`/help`、`/clean-memory`。
 
 </details>
 
@@ -242,20 +185,21 @@ yarn test                 # 关键用例：记忆（test/memory.ts）+ 回复（
 <details>
 <summary><b>定时任务</b>（src/tasks）</summary>
 
-基于 `toad-scheduler`，在 [src/index.ts](src/index.ts) 统一注册：
+基于 `toad-scheduler`，在 [src/index.ts](src/index.ts) 通过 [scheduler.ts](src/tasks/scheduler.ts) 统一注册：
 
 - `clean.ts`：每 3 天清空内存中的会话历史缓存（不影响持久化的 SQLite 记忆库）。
-- `memoryConsolidate.ts`：每天 0/6/12/18 点（Asia/Shanghai）对所有 `initiativeList` 群跑记忆巩固（`preventOverrun` 防重入）。切窗口要花 embedding，所以只做这些群；不花钱的增量导入对所有群都跑。
+- `memoryConsolidate.ts`：每天 0/6/12/18 点（Asia/Shanghai）对所有 `initiativeList` 群跑记忆巩固（`preventOverrun` 防重入）。
 
 </details>
 
 <details>
-<summary><b>管理面板</b>（src/core/admin）</summary>
+<summary><b>单页管理面板</b>（src/panel）</summary>
 
-一个独立的裸 `http.Server`（默认 `127.0.0.1:9616`，环境变量 `ADMIN_HOST`/`ADMIN_PORT`/`ADMIN_TOKEN` 可覆盖），无框架、内联 HTML/JS 页面；`?token=` 或 `x-admin-token` 头鉴权，绑定非本地地址时若未显式设置 `ADMIN_TOKEN` 直接拒绝启动。
+独立的裸 `http.Server`（默认 `127.0.0.1:9616`，环境变量 `ADMIN_HOST`/`ADMIN_PORT`/`ADMIN_TOKEN` 可覆盖），无前端构建依赖，单页 HTML 位于 [page.html](src/panel/page.html)；`?token=` 或 `x-admin-token` 头鉴权，绑定非本地地址时若未显式设置 `ADMIN_TOKEN` 直接拒绝启动。
 
-- `config.ts`：`GET/POST /api/config` 读写 `config.json`（白名单校验），**显式拒绝暴露/修改 `wsConfig`/`nonokaService`/`apiKeys` 等密钥字段**（需手动改文件）；写入原子化（先写 `.tmp` 再 rename），保存后热更新到运行中的 `bot.config`。
-- `memory.ts`：`/memory` 页面 + `GET /api/memory/users|groups|items`、`POST /api/memory/group|add|update|delete`。编辑/置顶/删除都走 `MemoryStore` 以保持 FTS/向量同步（不要绕过它直接改库），改动的文本会重新入队向量化，新别名实时推入 `aliasIndex`（该用户从未在日志中出现过时需重启才生效）。
+- `GET /`：合并后的单页管理界面（`/memory` 自动 302 跳转至对应区块兼容旧书签）。
+- `routes/config.ts`：`GET /api/status` 返回 WS 连接状态；`GET/POST /api/config` 热更新 AI 回复配置（显式拒绝暴露/修改 `wsConfig`/`nonokaService`/`apiKeys`）；`POST /api/chat/clean` 手动清理内存短期会话缓存。
+- `routes/memory.ts`：`/api/memory/*` 维护群档案、人物记忆（含原话证据溯源）、记忆黑名单与巩固运行记录；所有配置写入统一经 [src/config.ts](src/config.ts) 原子落盘，所有记忆写入经 `MemoryStore` 保持 FTS/向量同步。
 
 </details>
 
@@ -265,31 +209,18 @@ yarn test                 # 关键用例：记忆（test/memory.ts）+ 回复（
 ESLint 基于 `airbnb-base` + `airbnb-typescript`，并通过 `import/no-restricted-paths` 强制单向依赖（见 [.eslintrc.json](.eslintrc.json)）：
 
 ```
-utils  ←  core  ←  service  ←  modules  ←  tasks
+utils  ←  config / bot  ←  service  ←  memory / tools  ←  chat  ←  tasks / panel  ←  index.ts
 ```
 
 - `utils` 必须零业务依赖
-- `service` 不依赖 `nnkBot` 单例（配置从 `@/core/nnkConfig` 取）、不依赖 `modules`、不依赖 `tasks`
-- `modules` 不依赖 `tasks`；公共逻辑下沉到 `service`
-- `core` 不依赖 `tasks`、不依赖 `service`
+- `config` / `bot` 不反向依赖上层服务或业务
+- `service` 只从 `@/config` 取配置，不依赖 `bot` 或业务层
+- `memory` / `tools` 不依赖 `chat` / `tasks` / `panel`
+- `chat` 不依赖 `tasks` / `panel`
 
 违反这些规则 `yarn lint` 会直接报错。路径别名 `@/*` 映射到 `src/*`。
 
-提交信息用约定式写法，`type` 常用 `feat` / `fix`，其余按 [Conventional Commits](https://www.conventionalcommits.org/) 惯例：
-
-```
-feat: 记忆巩固支持按天断点续跑
-fix(imageGen): 让模型知道图交了没有，发图时配一句话
-```
-
-**PR 自检清单**：
-
-- `yarn lint` 通过（分层依赖规则、命名规范都靠它拦）
-- 新增模块已在 `src/index.ts` 正确的位置注册，顺序符合命中优先级预期
-- 涉及记忆检索 / 分段 / prompt 的改动，跑过 `yarn memory:probe` 或 `yarn memory:eval`（真实语料，每组建议 ≥30 条），而不是凭感觉改
-- 新配置字段已同步：`src/types/config.ts` 类型、`config_demo.json` 默认值，需要面板可编辑的话同步 `src/core/admin/config.ts` 白名单
-- 没有把 `config.json`、`config_github.json`、`data/` 下的真实密钥或群聊数据带进 diff
-- 注释只写非显然的约束/原因，1–2 行为宜，不写大段设计文档式注释
+提交信息用约定式写法，`type` 常用 `feat` / `fix` / `refactor`，遵循 [Conventional Commits](https://www.conventionalcommits.org/) 惯例。
 
 </details>
 

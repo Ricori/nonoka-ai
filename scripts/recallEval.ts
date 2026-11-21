@@ -1,8 +1,8 @@
 import { embedTexts } from '@/service/llm';
-import { getMemoryDb } from '@/modules/aiReply/memory/db';
-import { CHAT_MIN_SIMILARITY as MIN_SIMILARITY, buildTermQueries, recallChat } from '@/modules/aiReply/memory/retrieve';
-import { queryTerms } from '@/modules/aiReply/memory/segment';
-import { searchSimilar } from '@/modules/aiReply/memory/vector';
+import { getMemoryDb } from '@/memory/db';
+import { CHAT_MIN_SIMILARITY as MIN_SIMILARITY, buildTermQueries, recallChat } from '@/memory/retrieve';
+import { queryTerms } from '@/memory/segment';
+import { searchSimilar } from '@/memory/vector';
 
 /**
  * 召回质量评测：一组查询跑下来，把「为什么召回的是这几条」拆开量化。

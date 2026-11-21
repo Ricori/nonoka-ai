@@ -1,7 +1,7 @@
 import { CronJob, AsyncTask } from 'toad-scheduler';
-import nnkbot from '@/core/nnkBot';
+import { botConfig } from '@/config';
 import { printError } from '@/utils/print';
-import { consolidateMemoryTracked } from '@/modules/aiReply/memory/consolidate';
+import { consolidateMemoryTracked } from '@/memory/consolidate';
 
 /**
  * 每日四次记忆巩固：切语义窗口、补向量、跑淘汰。
@@ -10,8 +10,8 @@ import { consolidateMemoryTracked } from '@/modules/aiReply/memory/consolidate';
  * 字面索引不花钱，`consolidateMemory` 里的增量 ingest 对所有群都跑
  */
 const task = new AsyncTask('memoryConsolidateTask', async () => {
-  if (!nnkbot.config.aiReply.enable || !nnkbot.config.nonokaService.apiKey) return;
-  await consolidateMemoryTracked(nnkbot.config.aiReply.initiativeList);
+  if (!botConfig.aiReply.enable || !botConfig.nonokaService.apiKey) return;
+  await consolidateMemoryTracked(botConfig.aiReply.initiativeList);
 }, (err) => {
   printError(`[memoryConsolidateTask] ${err}`);
 });

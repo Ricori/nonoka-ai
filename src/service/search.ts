@@ -1,5 +1,5 @@
 import Axios from 'axios';
-import { botConfig } from '@/core/nnkConfig';
+import { botConfig } from '@/config';
 import { printError } from '@/utils/print';
 
 /**
