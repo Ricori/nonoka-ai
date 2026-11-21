@@ -188,15 +188,3 @@ export async function embedTexts(texts: string[]): Promise<EmbedResult | null> {
   if (!Array.isArray(vectors) || vectors.length !== texts.length) return null;
   return { vectors, model: typeof ret?.data?.model === 'string' ? ret.data.model : null };
 }
-
-/** 调用LLM翻译 */
-export async function translateText(text: string, lang = 'cn'): Promise<string | null> {
-  const ret = await Axios.post(getServiceUrl('/llm/translate'), { text, lang }, {
-    timeout: COMMON_TIMEOUT,
-  }).catch((e) => {
-    printError(`[LLM translate error] ${e.message}`);
-    return null;
-  });
-
-  return ret?.data?.text ?? null;
-}

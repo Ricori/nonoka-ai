@@ -76,7 +76,7 @@ const user = (message: string, isMentionMe = false): FormattedMessage => ({
     });
   }).listen(PORT, '127.0.0.1');
   // 全部指向假服务端，不烧真实额度
-  nnkbot.config.nonokaService = { baseUrl: `http://127.0.0.1:${PORT}`, apiKey: 'testkey', cdnHost: '' };
+  nnkbot.config.nonokaService = { baseUrl: `http://127.0.0.1:${PORT}`, apiKey: 'testkey' };
   nnkbot.config.aiReply.search = {
     enable: true, whiteGroupIds: [], dailyLimit: 2, count: 5,
   };

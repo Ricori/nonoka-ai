@@ -10,12 +10,9 @@
     "autoAddFriend": false,
     "nonokaService": {
       "baseUrl": "",
-      "apiKey": "",
-      "cdnHost": ""
+      "apiKey": ""
     },
     "apiKeys": {
-      "lolicon": "",
-      "saucenao": "",
       "imageGen": {
         "baseUrl": "https://api.llm-token.cn",
         "apiKey": "",
@@ -25,28 +22,6 @@
     "repeater": {
       "enable": true,
       "blackList": []
-    },
-    "biliDynamicPush": {
-      "enable": true,
-      "config": {
-        "13184888": [],
-        "565597249": [],
-        "629994228": []
-      },
-      "cookie": "",
-      "refreshToken": ""
-    },
-    "tweetPush": {
-      "enable": true,
-      "config": {
-        "hiiragi_yuka530": []
-      }
-    },
-    "ytLivePush": {
-      "enable": true,
-      "config": {
-        "@Kotoha_ktnh": []
-      }
     },
     "aiReply": {
       "enable": true,
@@ -74,11 +49,6 @@
         "dailyLimit": 20,
         "count": 5
       }
-    },
-    "hPic": {
-      "enable": false,
-      "whiteGroupIds": [],
-      "enableR18": true
     }
   }
 }

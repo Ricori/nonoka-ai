@@ -16,15 +16,9 @@ export interface BotConfig {
     baseUrl: string;
     /** API服务密钥 */
     apiKey: string;
-    /** 媒体反代 CDN 域名（如 cdn.nonoka.online），留空则不做域名替换 */
-    cdnHost: string;
   };
   /** 第三方服务 API 密钥（不通过管理面板读取或修改，直接编辑 config.json） */
   apiKeys: {
-    /** lolicon 瑟图接口 */
-    lolicon: string;
-    /** saucenao 搜图接口 */
-    saucenao: string;
     /** 画图上游。出图要 130s+，过 nonoka 服务会被 CF 边缘切成 524，只能直连 */
     imageGen: {
       /** 上游地址，如 https://api.llm-token.cn */
@@ -41,32 +35,7 @@ export interface BotConfig {
     enable: boolean;
     /** 黑名单群号 */
     blackList: number[];
-  },
-  /** B站动态推送 */
-  biliDynamicPush: {
-    /** 是否开启功能 */
-    enable: boolean;
-    /** 推送配置 {b站uid : 要推送的群号列表 } */
-    config: Record<string, number[]>;
-    /** 登录账号的完整 cookie，动态接口不对游客开放 */
-    cookie: string;
-    /** 登录后 localStorage 里的 ac_time_value，用于 cookie 自动续期，续期后会自动写回 */
-    refreshToken?: string;
-  },
-  /** 推特动态推送 */
-  tweetPush: {
-    /** 是否开启功能 */
-    enable: boolean;
-    /** 推送配置 {推特用户名 : 要推送的群号列表 } */
-    config: Record<string, number[]>;
-  },
-  /** YouTube 开播推送 */
-  ytLivePush: {
-    /** 是否开启功能 */
-    enable: boolean;
-    /** 推送配置 {YouTube 频道名 : 要推送的群号列表 } */
-    config: Record<string, number[]>;
-  },
+  };
   /** AI回复 */
   aiReply: {
     /** 是否开启AI回复 */
@@ -113,16 +82,7 @@ export interface BotConfig {
       /** 单次返回的结果条数，默认 5，上限 8 */
       count?: number;
     };
-  },
-  /** 瑟图功能 */
-  hPic: {
-    /** 是否开启瑟图功能 */
-    enable: boolean;
-    /** 白名单群号，非空时启动白名单机制（只允许在白名单群发图） */
-    whiteGroupIds: number[];
-    /** 是否允许发送 R18 图片 */
-    enableR18: boolean,
-  },
+  };
 }
 
 export interface NonokaConfig {

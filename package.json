@@ -29,11 +29,9 @@
     "@node-rs/jieba": "^2.0.1",
     "axios": "^1.6.0",
     "better-sqlite3": "^13.0.1",
-    "cheerio": "^1.0.0-rc.11",
     "form-data": "^4.0.5",
     "lodash": "^4.17.21",
     "nanoid": "^5.0.7",
-    "puppeteer": "2.1.1",
     "sharp": "^0.35.3",
     "toad-scheduler": "^3.0.0",
     "websocket": "^1.0.35"

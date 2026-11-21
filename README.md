@@ -21,7 +21,7 @@
 
 **🔁 还有个复读机。** 连续相同消息达到随机阈值会自动复读。
 
-**📡 还会一堆杂活。** 以图搜源（SauceNAO，动画会补查 WhatAnime 拿集数和时间点）、关键词图库（`/加图` 存图，之后说关键词随机发一张）、B站动态 / Twitter / YouTube 开播推送、TTS 语音回复、内嵌管理面板热改配置。
+**🗣️ 语音与面板。** 支持 TTS 语音回复与内嵌管理面板热改配置/维护记忆库（推送、搜图、图库、涩图等功能类已拆分至独立的 QQ 官方机器人 `nonoka-assistant-bot`）。
 
 ## 快速开始
 
@@ -36,7 +36,7 @@ yarn install
 - `wsConfig` —— OneBot 正向 WS 的 host / port
 - `botConfig.admin` —— 管理员 QQ 号列表，管理员私聊能发控制命令
 - `botConfig.nonokaService` —— Nonoka 服务地址与 apiKey
-- `botConfig.apiKeys` —— saucenao / lolicon / 生图服务的密钥
+- `botConfig.apiKeys.imageGen` —— 生图服务的上游地址与密钥
 
 然后：
 
@@ -111,26 +111,26 @@ export default new MyModule();
         ▼
 ┌───────────────────────────────────────────────┐
 │  moduleList（按 src/index.ts 注册顺序遍历）     │
-│  好友请求 → 管理员命令 → 群命令 → 搜图 → 图库    │
-│  → 涩图 → 复读机 → 私聊 AI → 群聊 AI            │
+│  好友请求 → 管理员命令 → 群命令 → 复读机         │
+│  → 私聊 AI → 群聊 AI                           │
 │  每个模块：match(ctx) 命中判定 → run(ctx, hit)  │
 │  run 返回 'continue' 才继续往下传，否则链路终止  │
 └───────────────────────────────────────────────┘
         │                              │
         ▼                              ▼
  src/service/*（API 封装）      src/modules/aiReply/memory/*
- LLM / 生图 / 搜图 / 推送源      SQLite 记忆库（FTS5 + 向量）
+ LLM / 生图 / 搜网 / TTS        SQLite 记忆库（FTS5 + 向量）
 ```
 
 ```
 src/index.ts              启动入口：注册模块 / 定时任务，跑一次记忆导入，启动管理面板，连接 WS
 src/core/                 WS 客户端、模块基类、调用链、配置、定时器、管理面板
 src/modules/              功能模块（aiReply / group / common / request / admin）
-src/service/              外部服务封装：LLM、生图、搜图、B站/Twitter/YouTube、TTS、CDN
-src/tasks/                定时任务：清理、记忆巩固、各平台推送
+src/service/              外部服务封装：LLM、生图、搜网、TTS
+src/tasks/                定时任务：会话缓存清理、记忆巩固
 src/utils/                零业务依赖的工具函数
 scripts/                  独立脚本：记忆巩固、召回评测/探测、日志网页服务
-data/                     运行期数据：SQLite 记忆库、聊天备份、图片/表情素材
+data/                     运行期数据：SQLite 记忆库、聊天备份、表情素材
 ```
 
 ## 记忆系统是怎么跑的
@@ -226,16 +226,14 @@ yarn test                 # 关键用例：记忆（test/memory.ts）+ 回复（
 
 ### 群功能（[src/modules/group](src/modules/group)）
 
-- `command.ts`：斜杠命令分发——`/initiative on|off`、`/voice on|off`、`/p <推文>`、`/tts <文本>`。
+- `command.ts`：斜杠命令分发——`/initiative on|off`、`/voice on|off`、`/tts <文本>`、`/ban <QQ号> [分钟]`。
 - `repeater.ts`：复读机，按群统计连续相同消息数，超随机阈值（2 或 3）延迟复读一次并标记本轮完成。
-- `localPic/`：关键词图库，`/加图 <关键词>` 存进 `data/picture/{关键词}/`，之后精确匹配关键词随机发一张。
 
 ### 公共模块与管理
 
-- `common/hPic.ts`：匹配"来点涩图"类口语，按配置返回 SFW/R18，白名单群门控。
-- `common/imageSearch.ts`：识别"搜图"/"来源"关键词（附带或引用图片），提取 URL 转给 `service/searchImg`。
+- `common/permission.ts`：bot 管理员与群管理员鉴权。
 - `request/requestFriend.ts`：`autoAddFriend` 开启或请求者在预批准名单中则自动通过，否则拒绝，通过后通知管理员。
-- `admin/index.ts`：管理员私聊控制台（白名单鉴权），`/help`、`/clean-memory`、`/task <twitter|bilibili> <on|off>`、`/p <groupId> <推文>`。
+- `admin/index.ts`：管理员私聊控制台（白名单鉴权），`/help`、`/clean-memory`。
 
 </details>
 
@@ -246,13 +244,8 @@ yarn test                 # 关键用例：记忆（test/memory.ts）+ 回复（
 | --- | --- |
 | `llm/index.ts` | 把消息 / 工具调用循环转发给外部 `nonokaService`，服务端跑推理，bot 端无状态地重建对话 |
 | `imageGen/index.ts` | 直连 OpenAI 兼容生图接口（绕开代理避免超时），重试仅针对 5xx，正则识别内容审核拒绝，超大图先用 `sharp` 压缩再编辑 |
-| `searchImg/*` | 以图搜源：优先 SauceNAO，识别为动画再补查 WhatAnime 拿集数/时间点，ascii2d 目前代码内禁用 |
 | `search.ts` | 联网搜索转发给 `nonokaService` |
 | `tts/index.ts` | 转发到 `nonokaService` 的 `/v1/audio/speech`，返回 base64 音频 |
-| `bilibili/dynamic.ts` | 抓取 B 站动态接口（cookie 鉴权），解析多种动态卡片类型 |
-| `twitter/*` | 拉取推文缓存、渲染推文截图、拼装含图片/视频的 QQ 消息 |
-| `youtube/live.ts` | 查询 YouTube 直播状态接口 |
-| `cdn.ts` | 把被墙的 Twitter/YouTube 媒体域名重写成 [Nonoka CDN](https://cdn.nonoka.online/) 的反代路径 |
 
 </details>
 
@@ -261,11 +254,8 @@ yarn test                 # 关键用例：记忆（test/memory.ts）+ 回复（
 
 基于 `toad-scheduler`，在 [src/index.ts](src/index.ts) 统一注册：
 
-- `bilibili.ts`：每 180s 轮询配置的 UP 主最新动态（错峰 2s 一个避免限流），有更新则推送到映射的群。
 - `clean.ts`：每 3 天清空内存中的会话历史缓存（不影响持久化的 SQLite 记忆库）。
 - `memoryConsolidate.ts`：每天 0/6/12/18 点（Asia/Shanghai）对所有 `initiativeList` 群跑记忆巩固（`preventOverrun` 防重入）。切窗口要花 embedding，所以只做这些群；不花钱的增量导入对所有群都跑。
-- `twitter.ts`：10s 一次 tick，按服务端算出的 `nextRunAt` 窗口实际拉取；单用户连续失败则跳过，累计失败一定次数则自动关闭任务并通知管理员。
-- `youtube.ts`：每 120s 检查直播状态，每个频道首次检查不推送（避免启动时误报已在直播的场次），按 `videoId` 去重。
 
 </details>
 

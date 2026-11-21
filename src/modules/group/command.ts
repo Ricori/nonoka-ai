@@ -2,7 +2,6 @@ import nnkbot from '@/core/nnkBot';
 import { EventKind, ModuleContext, NonokaModule } from '@/core/nnkModule';
 import { GroupMessageData } from '@/types/event';
 import { saveConfigToDisk } from '@/core/nnkConfig';
-import { createMsgFromTweetId } from '@/service/twitter/message';
 import { getRecordCode } from '@/utils/msgCode';
 import { sendSegmentedVoice, TTS_MAX_TOTAL_LENGTH } from '@/service/tts';
 import { printError } from '@/utils/print';
@@ -12,7 +11,6 @@ import { isVoiceEnabled, setVoiceEnabled } from '../aiReply/group/voiceState';
 type GroupCommand =
   | { cmd: 'initiative'; enable?: boolean }
   | { cmd: 'voice'; enable?: boolean }
-  | { cmd: 'pushTweet'; tweetId: string }
   | { cmd: 'tts'; text: string }
   | { cmd: 'ban'; userId?: number; minutes: number };
 
@@ -37,10 +35,6 @@ class GroupCommandModule extends NonokaModule<GroupMessageData, GroupCommand> {
     // /voice [on|off]
     const voiceMatch = message.match(/^\/voice(?:\s+(on|off))?$/);
     if (voiceMatch) return { cmd: 'voice', enable: parseSwitch(voiceMatch[1]) };
-
-    // /p <tweetUrl|tweetId>
-    const pushTweetMatch = message.match(/^\/p\s+(?:\S*status\/)?(\d+)(?:[?#/]\S*)?\s*$/);
-    if (pushTweetMatch) return { cmd: 'pushTweet', tweetId: pushTweetMatch[1] };
 
     // /tts <text>
     const ttsMatch = message.match(/^\/tts\s+(.+)$/);
@@ -68,14 +62,6 @@ class GroupCommandModule extends NonokaModule<GroupMessageData, GroupCommand> {
       case 'voice':
         this.handleVoice(ctx, hit.enable);
         return;
-
-      case 'pushTweet': {
-        const msgArr = await createMsgFromTweetId(hit.tweetId);
-        for (const msg of msgArr ?? []) {
-          ctx.reply(msg);
-        }
-        return;
-      }
 
       case 'tts':
         await this.handleTTS(ctx, hit.text);

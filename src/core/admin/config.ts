@@ -19,8 +19,7 @@ function validateConfig(v: unknown): v is NonokaConfig {
   if (!isPlainObject(wsConfig) || typeof wsConfig.host !== 'string' || typeof wsConfig.port !== 'number') return false;
   if (!isPlainObject(botConfig)) return false;
   const requiredKeys = [
-    'admin', 'autoAddFriend', 'nonokaService', 'apiKeys', 'repeater',
-    'biliDynamicPush', 'tweetPush', 'ytLivePush', 'aiReply', 'hPic',
+    'admin', 'autoAddFriend', 'nonokaService', 'apiKeys', 'repeater', 'aiReply',
   ];
   return requiredKeys.every((k) => k in botConfig);
 }
@@ -30,12 +29,18 @@ function readConfigFile(): NonokaConfig {
 }
 
 /**
- * wsConfig（WebSocket 连接地址/端口）、nonokaService（服务地址/密钥）与 apiKeys（第三方密钥）
- * 不允许通过管理面板读取或修改，仅能直接编辑 config.json
+ * 简化版管理面板仅暴露和修改 AI 对话相关配置；
+ * wsConfig、nonokaService、apiKeys 以及已拆分到辅助 bot 的推送/涩图配置均保持磁盘原值
  */
 function redactConfig(config: NonokaConfig) {
-  const { nonokaService, apiKeys, ...restBotConfig } = config.botConfig;
-  return { botConfig: restBotConfig };
+  const {
+    admin, autoAddFriend, repeater, aiReply,
+  } = config.botConfig;
+  return {
+    botConfig: {
+      admin, autoAddFriend, repeater, aiReply,
+    },
+  };
 }
 
 function writeConfigFile(config: NonokaConfig) {
@@ -114,44 +119,6 @@ const PAGE = `<!doctype html>
   </section>
 
   <section>
-    <h2>B 站动态推送</h2>
-    <div class="row"><label>启用</label><input type="checkbox" id="biliEnable"></div>
-    <div class="row"><label>Cookie</label><textarea id="biliCookie"></textarea></div>
-    <div class="row"><label>refreshToken</label><input type="text" id="biliRefreshToken" placeholder="localStorage 的 ac_time_value，用于自动续期"></div>
-    <div class="row"><label style="align-self:flex-start">推送配置</label>
-      <div style="flex:1">
-        <table id="biliConfigTable"></table>
-        <button type="button" id="biliConfigAdd">+ 添加 UID</button>
-        <div class="hint">左：B站 UID，右：要推送的群号（逗号分隔）</div>
-      </div>
-    </div>
-  </section>
-
-  <section>
-    <h2>推特推送</h2>
-    <div class="row"><label>启用</label><input type="checkbox" id="tweetEnable"></div>
-    <div class="row"><label style="align-self:flex-start">推送配置</label>
-      <div style="flex:1">
-        <table id="tweetConfigTable"></table>
-        <button type="button" id="tweetConfigAdd">+ 添加用户名</button>
-        <div class="hint">左：推特用户名，右：要推送的群号（逗号分隔）</div>
-      </div>
-    </div>
-  </section>
-
-  <section>
-    <h2>YouTube 开播推送</h2>
-    <div class="row"><label>启用</label><input type="checkbox" id="ytEnable"></div>
-    <div class="row"><label style="align-self:flex-start">推送配置</label>
-      <div style="flex:1">
-        <table id="ytConfigTable"></table>
-        <button type="button" id="ytConfigAdd">+ 添加频道 ID</button>
-        <div class="hint">左：YouTube 频道 ID（形如 UCxxxxxxxx），右：要推送的群号（逗号分隔）</div>
-      </div>
-    </div>
-  </section>
-
-  <section>
     <h2>AI 回复</h2>
     <div class="row"><label>启用</label><input type="checkbox" id="aiEnable"></div>
     <div class="row"><label>黑名单群号</label><input type="text" id="aiBlackList" placeholder="用逗号分隔"></div>
@@ -159,14 +126,7 @@ const PAGE = `<!doctype html>
   </section>
 
   <section>
-    <h2>瑟图功能</h2>
-    <div class="row"><label>启用</label><input type="checkbox" id="hPicEnable"></div>
-    <div class="row"><label>白名单群号</label><input type="text" id="hPicWhiteList" placeholder="用逗号分隔，留空则不限制"></div>
-    <div class="row"><label>允许 R18</label><input type="checkbox" id="hPicR18"></div>
-  </section>
-
-  <section>
-    <span class="hint">WebSocket 连接设置（host / port）不通过本面板读取或修改，请直接编辑 config.json</span>
+    <span class="hint">推送订阅与涩图配置已迁移至 nonoka-assistant-bot 面板；WebSocket / 密钥设置请直接编辑 config.json</span>
   </section>
 </main>
 <script>
@@ -193,35 +153,7 @@ const PAGE = `<!doctype html>
       .map(Number).filter((n) => !Number.isNaN(n));
   }
 
-  function buildMapTable(tableEl, map) {
-    tableEl.innerHTML = '';
-    Object.entries(map || {}).forEach(([key, groups]) => addMapRow(tableEl, key, (groups || []).join(',')));
-  }
-
-  function addMapRow(tableEl, key, groupsText) {
-    const tr = document.createElement('tr');
-    tr.innerHTML =
-      '<td><input type="text" class="mkey" value="' + (key || '').replace(/"/g, '&quot;') + '" placeholder="key"></td>' +
-      '<td><input type="text" class="mval" value="' + (groupsText || '').replace(/"/g, '&quot;') + '" placeholder="群号，逗号分隔"></td>' +
-      '<td class="op"><button type="button" class="rm">✕</button></td>';
-    tr.querySelector('.rm').onclick = () => tr.remove();
-    tableEl.appendChild(tr);
-  }
-
-  function readMapTable(tableEl) {
-    const result = {};
-    tableEl.querySelectorAll('tr').forEach((tr) => {
-      const key = tr.querySelector('.mkey').value.trim();
-      if (!key) return;
-      result[key] = parseNumList(tr.querySelector('.mval').value);
-    });
-    return result;
-  }
-
-  let current = null;
-
   function fill(cfg) {
-    current = cfg;
     const bc = cfg.botConfig;
     document.getElementById('admin').value = (bc.admin || []).join(',');
     document.getElementById('autoAddFriend').checked = !!bc.autoAddFriend;
@@ -229,24 +161,9 @@ const PAGE = `<!doctype html>
     document.getElementById('repeaterEnable').checked = !!bc.repeater.enable;
     document.getElementById('repeaterBlackList').value = (bc.repeater.blackList || []).join(',');
 
-    document.getElementById('biliEnable').checked = !!bc.biliDynamicPush.enable;
-    document.getElementById('biliCookie').value = bc.biliDynamicPush.cookie || '';
-    document.getElementById('biliRefreshToken').value = bc.biliDynamicPush.refreshToken || '';
-    buildMapTable(document.getElementById('biliConfigTable'), bc.biliDynamicPush.config);
-
-    document.getElementById('tweetEnable').checked = !!bc.tweetPush.enable;
-    buildMapTable(document.getElementById('tweetConfigTable'), bc.tweetPush.config);
-
-    document.getElementById('ytEnable').checked = !!bc.ytLivePush.enable;
-    buildMapTable(document.getElementById('ytConfigTable'), bc.ytLivePush.config);
-
     document.getElementById('aiEnable').checked = !!bc.aiReply.enable;
     document.getElementById('aiBlackList').value = (bc.aiReply.blackList || []).join(',');
     document.getElementById('aiInitiativeList').value = (bc.aiReply.initiativeList || []).join(',');
-
-    document.getElementById('hPicEnable').checked = !!bc.hPic.enable;
-    document.getElementById('hPicWhiteList').value = (bc.hPic.whiteGroupIds || []).join(',');
-    document.getElementById('hPicR18').checked = !!bc.hPic.enableR18;
   }
 
   function collect() {
@@ -258,44 +175,14 @@ const PAGE = `<!doctype html>
           enable: document.getElementById('repeaterEnable').checked,
           blackList: parseNumList(document.getElementById('repeaterBlackList').value),
         },
-        biliDynamicPush: {
-          enable: document.getElementById('biliEnable').checked,
-          config: readMapTable(document.getElementById('biliConfigTable')),
-          cookie: document.getElementById('biliCookie').value,
-          refreshToken: document.getElementById('biliRefreshToken').value,
-        },
-        tweetPush: {
-          enable: document.getElementById('tweetEnable').checked,
-          config: readMapTable(document.getElementById('tweetConfigTable')),
-        },
-        ytLivePush: {
-          enable: document.getElementById('ytEnable').checked,
-          config: readMapTable(document.getElementById('ytConfigTable')),
-        },
         aiReply: {
           enable: document.getElementById('aiEnable').checked,
           blackList: parseNumList(document.getElementById('aiBlackList').value),
           initiativeList: parseNumList(document.getElementById('aiInitiativeList').value),
         },
-        hPic: {
-          enable: document.getElementById('hPicEnable').checked,
-          whiteGroupIds: parseNumList(document.getElementById('hPicWhiteList').value),
-          enableR18: document.getElementById('hPicR18').checked,
-        },
       },
     };
   }
-
-  document.getElementById('biliConfigAdd').onclick = () => addMapRow(document.getElementById('biliConfigTable'), '', '');
-  document.getElementById('tweetConfigAdd').onclick = () => addMapRow(document.getElementById('tweetConfigTable'), '', '');
-  document.getElementById('ytConfigAdd').onclick = () => addMapRow(document.getElementById('ytConfigTable'), '', '');
-
-  document.addEventListener('click', (e) => {
-    if (e.target.classList.contains('eye')) {
-      const input = document.getElementById(e.target.dataset.for);
-      input.type = input.type === 'password' ? 'text' : 'password';
-    }
-  });
 
   function load() {
     setStatus('加载中…', true);
